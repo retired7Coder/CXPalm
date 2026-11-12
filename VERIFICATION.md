@@ -32,12 +32,27 @@ explicitly described as deployment connectivity or public-byte checks.
   acceptance is claimed for this release.
 - GitHub repository 1433754725 and owner 129164549 are unchanged after the
   account rename to retired7Coder. New clients use the canonical manifest
-  origin and permit only the exact old-to-new account asset path followed by
+  URL and permit only the exact old-to-new account asset path followed by
   the same repository's pinned CDN; altered assets/owners and redirected
   manifests are rejected. Legacy manifest/asset identities remain compatible,
   but build11 and earlier require one manual upgrade past the rename.
-- Final publication, updater-download and deployment checks are pending and
-  will be recorded after the immutable release assets are publicly verified.
+- All ten published assets are anonymously downloaded again and match the
+  staged sizes and SHA-256 values. Both fixed manifests return build13 under
+  the old and canonical account paths, without query-string cache bypasses.
+  The public README and all four gallery PNGs match the committed Git blobs.
+- The real Electron updater, using an isolated profile and an older version
+  fixture, checks the canonical feed, follows the bounded account-rename/CDN
+  redirects, downloads the 120,769,573-byte installer and passes installation
+  preflight without executing it. Android's opt-in public manifest/APK download
+  and checksum check passes separately: one test, zero skips.
+- The public Web entry and all three immutable build13 assets match staged
+  bytes. An isolated Chromium check loads the actual HTTPS login page and
+  modules without errors; unauthenticated session and file reads remain 401.
+  All 76 installed Windows program files match the verified package, health
+  reports 0.0.11 and the official desktop IPC handshake succeeds after restart.
+  Configuration, authorizations, IP policy/settings, preferences, shortcuts and
+  login-startup registration are unchanged. No service/firewall changes,
+  physical-device acceptance or actual model execution is claimed.
 
 ## 0.0.10 / build11
 
