@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "releaseLine": "fresh-001",
-  "build": 11,
+  "build": 13,
   "appId": "dev.cxpalm.desktop",
   "platform": "win32",
   "arch": "x64",
-  "version": "0.0.10",
-  "url": "https://github.com/702165405/CXPalm/releases/download/v0.0.10-build11/CXPalm-Setup-0.0.10-build11-x64.exe",
-  "size": 120772521,
-  "sha256": "40daae60195e688c2019b175444d73f038818df728bf11ec901f9d8466817102",
-  "notes": "CXPalm 0.0.10 / build11: Remove independently generated input suggestions and the extra model-request path, including calls from older clients. Keep model, permission and context usage directly visible on the same composer row in Web and Android. The current desktop IPC does not expose cached native Composer Predictions, so this release does not claim native gray-text synchronization and does not regenerate a substitute. Context percentage is context utilization, not remaining account credits. Retains list runtime, document downloads and guidance positioning fixes. Existing configuration and authorizations are preserved."
+  "version": "0.0.11",
+  "url": "https://github.com/702165405/CXPalm/releases/download/v0.0.11-build13/CXPalm-Setup-0.0.11-build13-x64.exe",
+  "size": 120769573,
+  "sha256": "ed0d6ab4e3c0b7f16450ad8cf343e56d4e16e43ee4ddf1d0f0850bc3d468a6d9",
+  "notes": "CXPalm 0.0.11 / build13: Reuse downloaded images and documents in Web and Android. Image previews and full-size views share cached content, including after reload or app restart. Each reuse confirms authorization and the original file's SHA-256 revision; unchanged files return a confirmation without retransmitting file bytes, while changed files are downloaded again. Missing files and revoked access never return cached content. Cache retention is limited to 64 MiB, 24 entries and 7 days; Android storage is encrypted. Settings now include cache cleanup without deleting chats, drafts or exported files. The original computer must remain online for access and version confirmation. GitHub account 702165405 is now retired7Coder with the same repository and owner IDs; build13 accepts only that exact renamed asset path before the pinned repository CDN. Older desktop/App updaters require one manual in-place update after this rename; do not uninstall or clear data. Package/signing identity, existing configuration and authorizations are preserved. Native gray-text suggestion synchronization remains unavailable and no substitute model request is generated."
 }

@@ -35,12 +35,15 @@ func TestImageHTTPRequiresAuthorizationOriginAndMessageReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	post := func(origin, bearer, id string) *http.Response {
+	post := func(origin, bearer, id string, revisions ...string) *http.Response {
 		body, _ := json.Marshal(map[string]string{"thread": "chat", "turn": "history-0", "item": "history-item-0-0", "image": id})
 		req, _ := http.NewRequest("POST", ts.URL+"/api/v1/chat/image", bytes.NewReader(body))
 		req.Host = "cx.example"
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Content-Type", "application/json")
+		if len(revisions) > 0 {
+			req.Header.Set("X-CXPalm-Revision", revisions[0])
+		}
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
@@ -69,9 +72,30 @@ func TestImageHTTPRequiresAuthorizationOriginAndMessageReference(t *testing.T) {
 	if !bytes.Equal(data, imageBytes.Bytes()) || response.Header.Get("Content-Type") != "image/png" || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("invalid image response")
 	}
+	revision := response.Header.Get("ETag")
+	if revision == "" {
+		t.Fatal("missing image content revision")
+	}
+	unchanged := post("https://cx.example", token, id, revision)
+	body, _ := io.ReadAll(unchanged.Body)
+	if unchanged.StatusCode != 204 || len(body) != 0 || unchanged.Header.Get("ETag") != revision || unchanged.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("unchanged image retransmitted or lost revision")
+	}
+	var replacement bytes.Buffer
+	png.Encode(&replacement, image.NewRGBA(image.Rect(0, 0, 3, 3)))
+	os.WriteFile(imagePath, replacement.Bytes(), 0600)
+	changed := post("https://cx.example", token, id, revision)
+	body, _ = io.ReadAll(changed.Body)
+	if changed.StatusCode != 200 || changed.Header.Get("ETag") == revision || !bytes.Equal(body, replacement.Bytes()) {
+		t.Fatal("same-path image update reused stale bytes")
+	}
+	os.Remove(imagePath)
+	if post("https://cx.example", token, id, revision).StatusCode != 404 {
+		t.Fatal("deleted image authorized a cached copy")
+	}
 	device, _ := s.Store.Authorize(token)
 	s.Store.Revoke(device.ID)
-	if post("https://cx.example", token, id).StatusCode != 401 {
+	if post("https://cx.example", token, id, revision).StatusCode != 401 {
 		t.Fatal("revoked image read")
 	}
 }

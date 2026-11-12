@@ -75,11 +75,14 @@ test('initial release build namespace is immutable and stays on the exact truste
 test('GitHub redirects stay on this repository CDN, are bounded and never redirect manifests',async()=>{
  const asset=manifest().url,cdn='https://release-assets.githubusercontent.com/github-production-release-asset/1433754725/fixture-asset?sig=fixture';
  assert.equal(redirectURL(asset,cdn),cdn);
+ const renamed=asset.replace('/702165405/','/retired7Coder/');
+ assert.equal(redirectURL(asset,renamed),renamed);assert.equal(redirectURL(renamed,cdn),cdn);
+ for(const target of [renamed.replace('CXPalm/releases','Other/releases'),renamed.replace('-x64.exe','-arm64.exe'),renamed+'?x=1',renamed+'#x'])assert.throws(()=>redirectURL(asset,target));
  for(const target of ['http://release-assets.githubusercontent.com/github-production-release-asset/1433754725/id',cdn.replace('1433754725','99'),cdn.replace('release-assets.githubusercontent.com','evil.test'),cdn+'#fragment',cdn.replace('https://','https://user@'),asset.replace('702165405','other')])assert.throws(()=>redirectURL(asset,target));
  const calls=[];
- const fetch=async url=>{calls.push(url);const response=Readable.from([bytes]);response.statusCode=url===asset?302:200;response.headers=url===asset?{location:cdn}:{};return response;};
+ const fetch=async url=>{calls.push(url);const response=Readable.from([bytes]);response.statusCode=url===cdn?200:302;response.headers=url===asset?{location:renamed}:url===renamed?{location:cdn}:{};return response;};
  assert.deepEqual(Buffer.concat(await Array.fromAsync(await request(asset,new AbortController().signal,fetch))),bytes);
- assert.deepEqual(calls,[asset,cdn]);
+ assert.deepEqual(calls,[asset,renamed,cdn]);
  const redirect=async()=>{const response=Readable.from([]);response.statusCode=302;response.headers={location:cdn};return response;};
  await assert.rejects(request(FEED,new AbortController().signal,redirect));
  await assert.rejects(request(asset,new AbortController().signal,redirect));
@@ -88,12 +91,13 @@ test('GitHub redirects stay on this repository CDN, are bounded and never redire
 
 test('Electron probes redirects without credentials before fetching the approved body',async()=>{
  const asset=manifest().url,cdn='https://release-assets.githubusercontent.com/github-production-release-asset/1433754725/native-fixture?sig=fixture',heads=[],bodies=[];
+ const renamed=asset.replace('/702165405/','/retired7Coder/');
  const net={request:options=>{
   heads.push(options);const req=new EventEmitter();req.abort=()=>req.emit('close');
-  req.end=()=>queueMicrotask(()=>{if(options.url===asset)req.emit('redirect',302,'HEAD',cdn,{});else req.emit('response',{statusCode:200,headers:{}});});return req;
+  req.end=()=>queueMicrotask(()=>{if(options.url===asset)req.emit('redirect',301,'HEAD',renamed,{});else if(options.url===renamed)req.emit('redirect',302,'HEAD',cdn,{});else req.emit('response',{statusCode:200,headers:{}});});return req;
  },fetch:async(url,options)=>{bodies.push(url);assert.equal(options.redirect,'error');assert.equal(options.credentials,'omit');return new Response(bytes);}};
  const response=await request(asset,new AbortController().signal,(url,signal)=>electronResponse(url,signal,net));
  assert.deepEqual(Buffer.concat(await Array.fromAsync(response)),bytes);
- assert.deepEqual(bodies,[cdn]);assert.deepEqual(heads.map(row=>row.url),[asset,cdn]);
+ assert.deepEqual(bodies,[cdn]);assert.deepEqual(heads.map(row=>row.url),[asset,renamed,cdn]);
  for(const options of heads){assert.equal(options.method,'HEAD');assert.equal(options.credentials,'omit');assert.equal(options.useSessionCookies,false);assert.equal(options.redirect,'manual');}
 });

@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 
 const val UPDATE_ORIGIN = "https://github.com/702165405/CXPalm"
 const val UPDATE_RELEASES = "$UPDATE_ORIGIN/releases/download"
-const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/702165405/CXPalm/main/updates/download.json"
+const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/retired7Coder/CXPalm/main/updates/download.json"
 const val MAX_MANIFEST_BYTES = 65536L
 const val MAX_APK_BYTES = 128L * 1024 * 1024
 const val UPDATE_INTERVAL_MS = 6L * 60 * 60 * 1000
@@ -30,7 +30,7 @@ fun updateApkUrl(value: String): String {
     val uri = URI(value)
     require(uri.scheme == "https" && uri.host == "github.com" && uri.port == -1 &&
         uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null &&
-        uri.rawPath.matches(Regex("/702165405/CXPalm/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+-build[0-9]+/CXPalm-[A-Za-z0-9._-]+\\.apk")) &&
+        uri.rawPath.matches(Regex("/(?:702165405|retired7Coder)/CXPalm/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+-build[0-9]+/CXPalm-[A-Za-z0-9._-]+\\.apk")) &&
         !value.contains("..") && !value.contains('%')) { "更新 APK 必须位于固定 GitHub 仓库的发布路径下" }
     return uri.toASCIIString()
 }
@@ -40,7 +40,10 @@ internal fun updateRedirectUrl(from: String, location: String): String {
     require(runCatching { updateApkUrl(from) }.isSuccess || updateCdn(previous)) { "更新跳转来源不受信任" }
     require(location.length <= 16384) { "更新跳转地址过长" }
     val next = previous.resolve(location)
-    require(updateCdn(next)) { "更新跳转不属于此仓库的 GitHub 下载服务" }
+    // The verified account rename preserves repository 1433754725 and the exact asset.
+    val renamed=from.startsWith("https://github.com/702165405/CXPalm/")&&
+        next.toASCIIString()==from.replace("https://github.com/702165405/CXPalm/","https://github.com/retired7Coder/CXPalm/")
+    require(renamed||updateCdn(next)) { "更新跳转不属于此仓库的 GitHub 下载服务" }
     return next.toASCIIString()
 }
 private fun updateCdn(uri: URI): Boolean = uri.scheme == "https" && uri.port == -1 && uri.rawUserInfo == null && uri.rawFragment == null &&

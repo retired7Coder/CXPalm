@@ -1,5 +1,5 @@
 import {markdown} from './markdown-v1.mjs';
-import {seedHistoryIndex, Bridge, conversation, approvalDecisions, contextUsage, NotificationInbox, StateSequence, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {seedHistoryIndex, Bridge, conversation, approvalDecisions, contextUsage, NotificationInbox, StateSequence, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, MediaCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
 
 const $ = id => document.getElementById(id);
 const state = {page:'chat',device:null,version:'',sessions:[],projects:[],archived:false,project:'',listLimit:100,listSubscription:null,hasMore:false,settingsBase:null,editGroup:null,selected:null,snapshot:null,desktop:false,reconnect:null,openTools:new Set(),catalog:{models:[],skills:[]},skills:new Set()};
@@ -29,6 +29,7 @@ let questionScrubbing = false;
 let goalDraft = false;
 let composing = false;
 const uploads = new AttachmentUploads({storage:sessionStorage,changed:()=>renderControls()});
+const mediaCache = new MediaCache();
 function attachmentKey() { return state.selected && bridge.device ? `cxpalm:attachments:${bridge.device.id}:${state.selected.id}` : null; }
 function attachedFiles() { try { return JSON.parse(localStorage.getItem(attachmentKey()) || '[]'); } catch { return []; } }
 function renderAttachments() {
@@ -87,27 +88,26 @@ function report(error) {
   if(panel){let message=panel.querySelector('.panel-error');if(!message){message=text('p','','panel-error');message.setAttribute('role','alert');panel.querySelector('.panel-heading').after(message);}message.textContent=$('notice-text').textContent;}
 }
 function run(action) { return Promise.resolve().then(action).catch(report); }
-async function imageBitmap(thread,message,image) {
-  const response=await fetch('/api/v1/chat/image',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread,turn:message.turn,item:message.id,image:image.id}),signal:AbortSignal.timeout(30000)});
-  if(!response.ok)throw new Error(`图片暂不可用（HTTP ${response.status}），请检查电脑连接或原文件是否仍在。`);
-  if(!/^image\/(png|jpeg|gif|webp)$/.test(response.headers.get('content-type')||''))throw new Error('不支持的图片类型。');
-  const blob=await response.blob();if(blob.size>20*1024*1024)throw new Error('图片超过 20 MiB 限制。');
+async function imageBitmap(thread,message,image,scope,valid) {
+  const blob=await mediaCache.read(scope,'image',{thread,turn:message.turn,item:message.id,image:image.id},valid);
   return createImageBitmap(blob);
 }
 function appendImages(body,message) {
-  const thread=state.selected?.id,device=state.device?.id;
+  const thread=state.selected?.id,authorization=bridge.device;
+  const scope=JSON.stringify([authorization?.id,authorization?.expires]);
   for(const image of message.images||[]) {
     if(!/^[a-f0-9]{64}$/.test(image.id))continue;
     const button=text('button','正在读取图片…','conversation-image');button.type='button';body.append(button);
+    const valid=()=>!!authorization&&bridge.device===authorization&&state.selected?.id===thread&&button.isConnected;
     const load=async()=>{
       button.disabled=true;
       try {
-        const bitmap=await imageBitmap(thread,message,image);
-        try {if(!button.isConnected||state.device?.id!==device)return;
+        const bitmap=await imageBitmap(thread,message,image,scope,valid);
+        try {if(!button.isConnected||!valid())return;
           const canvas=document.createElement('canvas'),scale=Math.min(1,1024/Math.max(bitmap.width,bitmap.height));canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);canvas.setAttribute('role','img');canvas.setAttribute('aria-label',image.name||'会话图片');
           button.replaceChildren(canvas,text('span','点击查看图片'));button.onclick=()=>run(async()=>{
-            const original=await imageBitmap(thread,message,image);
-            try {if(state.device?.id!==device)return;
+            const original=await imageBitmap(thread,message,image,scope,valid);
+            try {if(!valid())return;
               const dialog=document.createElement('dialog');dialog.className='image-viewer';
               const close=text('button','关闭图片','quiet');close.type='button';close.onclick=()=>dialog.close();
               const full=document.createElement('canvas');full.width=original.width;full.height=original.height;full.getContext('2d').drawImage(original,0,0);full.setAttribute('role','img');full.setAttribute('aria-label',image.name||'会话图片');
@@ -124,7 +124,7 @@ function appendImages(body,message) {
   }
 }
 function appendFiles(body,message) {
-  const thread=state.selected?.id,authorization=bridge.device,ticket=selection;
+  const thread=state.selected?.id,authorization=bridge.device;
   for(const file of message.files||[]) {
     if(!/^[a-f0-9]{64}$/.test(file.id)||typeof file.name!=='string')continue;
     const card=text('div','','returned-file');
@@ -133,18 +133,13 @@ function appendFiles(body,message) {
     const button=text('button','下载','quiet file-download');button.type='button';button.setAttribute('aria-label',`下载 ${file.name}`);
     const status=text('small','','returned-file-status');status.setAttribute('role','status');
     button.onclick=async()=>{
-      const valid=()=>ticket===selection&&bridge.device===authorization&&bridge.connected&&!state.cached;
+      const valid=()=>!!authorization&&bridge.device===authorization&&state.selected?.id===thread&&bridge.connected&&!state.cached&&button.isConnected;
       button.disabled=true;status.textContent='正在下载…';
       try {
         if(!valid())throw new Error('请连接原电脑并打开此会话后下载。');
-        const response=await fetch('/api/v1/chat/file',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread,turn:message.turn,item:message.id,file:file.id}),signal:AbortSignal.timeout(60000)});
-        if(!response.ok)throw new Error(`文件暂不可用（HTTP ${response.status}），请检查电脑连接及原文件是否仍在。`);
-        if(response.headers.get('content-type')!=='application/octet-stream')throw new Error('文件响应无法验证，请在电脑核对。');
-        const reader=response.body.getReader(),chunks=[];let size=0;
-        try {for(;;){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>20*1024*1024)throw new Error('文件超过 20 MiB 下载限制。');chunks.push(part.value);}}
-        finally{await reader.cancel().catch(()=>{});}
+        const blob=await mediaCache.read(JSON.stringify([authorization?.id,authorization?.expires]),'file',{thread,turn:message.turn,item:message.id,file:file.id},valid);
         if(!valid()||!button.isConnected)return;
-        const url=URL.createObjectURL(new Blob(chunks,{type:'application/octet-stream'}));
+        const url=URL.createObjectURL(blob);
         const link=document.createElement('a');link.href=url;link.download=file.name;link.hidden=true;document.body.append(link);link.click();link.remove();
         setTimeout(()=>URL.revokeObjectURL(url),60000);
         status.textContent='已交给浏览器保存，请在下载列表中查看。';
@@ -155,6 +150,11 @@ function appendFiles(body,message) {
   }
 }
 function listen(id, event, action) { $(id).addEventListener(event, e => { e.preventDefault(); run(() => action(e)); }); }
+listen('clear-media-cache','click',async()=>{
+  $('clear-media-cache').disabled=true;
+  try {await mediaCache.clear();$('media-cache-status').textContent='缓存已清除，下次查看将重新下载。';}
+  finally{$('clear-media-cache').disabled=false;}
+});
 function reminderSync(error='') {
   const previous=state.reminderError;
   state.reminderError=error;state.reminderReady=true;
@@ -786,6 +786,7 @@ function saveReadingSoon(){
   },500);
 }
 function clearReadingCache(){
+  void mediaCache.clear().catch(()=>{});
   clearTimeout(cacheTimer);readingCache?.clear();readingCache=null;
   for(const key of Object.keys(sessionStorage))if(key.startsWith('cxpalm:reading:')||key==='cxpalm:reading-session')sessionStorage.removeItem(key);
 }

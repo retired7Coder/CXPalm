@@ -3,6 +3,7 @@ const {chromium} = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 const {EventEmitter, once} = require('node:events');
 
 async function main() {
@@ -48,7 +49,9 @@ async function main() {
   let nativeGoal=null;
   let guidanceFixture=false;
   let fileFixture=false;let rejectFile=false;let holdFile=false;let finishFile;let fileReads=0;
-  const fileBytes=Buffer.from('synthetic returned spreadsheet bytes\n');
+  let fileBytes=Buffer.from('synthetic returned spreadsheet bytes\n');
+  let fileTransfers=0,imageTransfers=0,imageChecks=0;
+  const revision=bytes=>`"sha256-${createHash('sha256').update(bytes).digest('hex')}"`;
   let settings={model:"fixture",effort:"high",mode:"default",permission:":workspace"};
   const commandApproval={id:'approval-fixture',method:'item/commandExecution/requestApproval',params:{command:'fixture only - not executed',availableDecisions:['accept','decline']}};
   let approvalRequests=[commandApproval];
@@ -76,11 +79,18 @@ async function main() {
       fileReads++;
       commands.emit('file.read',q);
       if(holdFile)await new Promise(resolve=>{finishFile=resolve;});
-      return route.fulfill({status:rejectFile?404:200,contentType:'application/octet-stream',body:fileBytes}).catch(()=>{});
+      if(rejectFile)return route.fulfill({status:404}).catch(()=>{});
+      const etag=revision(fileBytes);
+      if(route.request().headers()['x-cxpalm-revision']===etag)return route.fulfill({status:204,headers:{ETag:etag}}).catch(()=>{});
+      fileTransfers++;
+      return route.fulfill({status:200,contentType:'application/octet-stream',headers:{ETag:etag},body:fileBytes}).catch(()=>{});
     }
     if(url.pathname==='/api/v1/chat/image') {
       const q=route.request().postDataJSON();assert.equal(q.thread,'main-fixture');assert.equal(q.item,'returned-image');assert.equal(q.image,'f'.repeat(64));
-      return route.fulfill({status:200,contentType:'image/png',body:await fs.readFile(path.join(__dirname,'../assets/icon.png'))});
+      const bytes=await fs.readFile(path.join(__dirname,'../assets/icon.png')),etag=revision(bytes);imageChecks++;
+      if(route.request().headers()['x-cxpalm-revision']===etag)return route.fulfill({status:204,headers:{ETag:etag}});
+      imageTransfers++;
+      return route.fulfill({status:200,contentType:'image/png',headers:{ETag:etag},body:bytes});
     }
     if(url.pathname==='/api/v1/attachments') {
       assert.equal(url.searchParams.get('thread'),'main-fixture');
@@ -277,12 +287,27 @@ async function main() {
     guidanceFixture=false;currentSocket.send(JSON.stringify(snapshot()));
     await page.locator('.message.user[data-item="steer:second"]').waitFor({state:'detached'});
     fileFixture=true;currentSocket.send(JSON.stringify(snapshot()));
-    const historyBeforeFiles=sent.filter(command=>command.method==='chat.history').length;
+    let historyBeforeFiles=sent.filter(command=>command.method==='chat.history').length;
     const saveSheet=page.getByRole('button',{name:'下载 核对表.xlsx',exact:true});
     await saveSheet.waitFor();
     const [sheetDownload]=await Promise.all([page.waitForEvent('download'),saveSheet.click()]);
     assert.equal(sheetDownload.suggestedFilename(),'核对表.xlsx');
     assert((await fs.readFile(await sheetDownload.path())).equals(fileBytes),'downloaded document bytes changed');
+    assert.equal(sent.filter(command=>command.method==='chat.history').length,historyBeforeFiles);
+    const reselectedIndex=once(commands,'chat.history');
+    await page.locator('#session-list .session-item').first().click();
+    const [indexRead]=await reselectedIndex;
+    assert.equal(indexRead.indexOnly,true);
+    await page.waitForFunction(()=>document.querySelectorAll('#question-list button').length===70);
+    historyBeforeFiles=sent.filter(command=>command.method==='chat.history').length;
+    await saveSheet.waitFor();
+    const [reusedSheet]=await Promise.all([page.waitForEvent('download'),saveSheet.click()]);
+    assert((await fs.readFile(await reusedSheet.path())).equals(fileBytes));
+    assert.equal(fileTransfers,1,'same document transferred twice');
+    fileBytes=Buffer.from('updated synthetic spreadsheet bytes\n');
+    const [updatedSheet]=await Promise.all([page.waitForEvent('download'),saveSheet.click()]);
+    assert((await fs.readFile(await updatedSheet.path())).equals(fileBytes),'changed document reused an old copy');
+    assert.equal(fileTransfers,2);
     await page.getByText('已交给浏览器保存，请在下载列表中查看。',{exact:true}).waitFor();
     await capture('output-files-desktop.png');
     await page.setViewportSize({width:390,height:844});
@@ -304,7 +329,7 @@ async function main() {
     finishFile();holdFile=false;
     await page.waitForTimeout(150);page.off('download',countLate);
     assert.equal(lateDownloads,0,'late response saved a file after its message was removed');
-    assert.equal(fileReads,4);assert.equal(sent.filter(command=>['chat.send','chat.steer'].includes(command.method)).length,beforeComposerChecks);
+    assert.equal(fileReads,6);assert.equal(sent.filter(command=>['chat.send','chat.steer'].includes(command.method)).length,beforeComposerChecks);
     assert.equal(sent.filter(command=>command.method==='chat.history').length,historyBeforeFiles,'file controls armed unrelated automatic history reads');
     await page.setViewportSize({width:1440,height:960});
     const failedSnapshot=snapshot();
@@ -1088,7 +1113,22 @@ async function main() {
     await page.locator('.conversation-image canvas').waitFor();
     await page.locator('.conversation-image').click();await page.locator('.image-viewer[open] canvas').waitFor();await capture('returned-image-viewer.png');
     await page.getByRole('button',{name:'关闭图片',exact:true}).click();
+    await page.locator('.conversation-image').click();await page.locator('.image-viewer[open] canvas').waitFor();
+    await page.getByRole('button',{name:'关闭图片',exact:true}).click();
     await page.reload();await page.locator('.conversation-image canvas').waitFor();
+    assert.equal(imageTransfers,1,'preview, original and reload did not share the persisted image');
+    assert(imageChecks>=4,'cached image skipped authorization revalidation');
+    await page.locator('#message').fill('cache clear keeps my draft');
+    await page.locator('#nav-settings').click();
+    await page.getByText('图片与文档缓存',{exact:true}).click();
+    await page.locator('#clear-media-cache').click();
+    await page.getByText('缓存已清除，下次查看将重新下载。',{exact:true}).waitFor();
+    await capture('media-cache-settings-mobile.png');
+    await page.locator('#nav-chat').click();
+    assert.equal(await page.locator('#message').inputValue(),'cache clear keeps my draft');
+    await page.locator('.conversation-image').click();await page.locator('.image-viewer[open] canvas').waitFor();
+    assert.equal(imageTransfers,2,'cleared image cache was reused');
+    await page.getByRole('button',{name:'关闭图片',exact:true}).click();
     imageFixture=false;currentSocket.send(JSON.stringify(snapshot()));
     await page.waitForTimeout(800);
     assert(await page.evaluate(()=>!!sessionStorage.getItem('cxpalm:reading-session')));

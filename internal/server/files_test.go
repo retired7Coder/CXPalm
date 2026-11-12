@@ -34,12 +34,15 @@ func TestFileHTTPRequiresAuthorizationAndOriginalMessageReference(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	post := func(origin, bearer string, fields map[string]string) *http.Response {
+	post := func(origin, bearer string, fields map[string]string, revisions ...string) *http.Response {
 		body, _ := json.Marshal(fields)
 		req, _ := http.NewRequest("POST", ts.URL+"/api/v1/chat/file", bytes.NewReader(body))
 		req.Host = "cx.example"
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Content-Type", "application/json")
+		if len(revisions) > 0 {
+			req.Header.Set("X-CXPalm-Revision", revisions[0])
+		}
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
@@ -71,9 +74,30 @@ func TestFileHTTPRequiresAuthorizationAndOriginalMessageReference(t *testing.T) 
 		response.Header.Get("Content-Type") != "application/octet-stream" || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("invalid file response", response.Status, err)
 	}
+	revision := response.Header.Get("ETag")
+	if revision == "" {
+		t.Fatal("missing document content revision")
+	}
+	unchanged := post("https://cx.example", token, q, revision)
+	body, _ = io.ReadAll(unchanged.Body)
+	if unchanged.StatusCode != 204 || len(body) != 0 || unchanged.Header.Get("ETag") != revision || unchanged.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("unchanged document retransmitted or lost revision")
+	}
+	path := filepath.Join(s.Config.CodexHome, "review.xlsx")
+	updated := bytes.Repeat([]byte("x"), len(data))
+	os.WriteFile(path, updated, 0600)
+	changed := post("https://cx.example", token, q, revision)
+	body, _ = io.ReadAll(changed.Body)
+	if changed.StatusCode != 200 || changed.Header.Get("ETag") == revision || !bytes.Equal(body, updated) {
+		t.Fatal("same-size document update reused stale bytes")
+	}
+	os.Remove(path)
+	if post("https://cx.example", token, q, revision).StatusCode != 404 {
+		t.Fatal("deleted document authorized a cached copy")
+	}
 	device, _ := s.Store.Authorize(token)
 	s.Store.Revoke(device.ID)
-	if post("https://cx.example", token, q).StatusCode != 401 {
+	if post("https://cx.example", token, q, revision).StatusCode != 401 {
 		t.Fatal("revoked output read")
 	}
 }

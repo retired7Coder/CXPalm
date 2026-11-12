@@ -57,7 +57,7 @@ class UpdateTest {
         rejected { parseUpdateManifest(" ".repeat(MAX_MANIFEST_BYTES.toInt() + 1), pkg) }
     }
     @Test fun onlyFixedRepositoryReleaseApkPathsAreAccepted() {
-        assertEquals("https://raw.githubusercontent.com/702165405/CXPalm/main/updates/download.json", UPDATE_MANIFEST_URL)
+        assertEquals("https://raw.githubusercontent.com/retired7Coder/CXPalm/main/updates/download.json", UPDATE_MANIFEST_URL)
         assertEquals(manifest().apk, updateApkUrl(manifest().apk))
         for (input in listOf("https://old-updates.example.test/cxpalm/a.apk", "http://github.com/702165405/CXPalm/releases/download/v0.0.2-build3/a.apk",
             manifest().apk.replace("702165405", "another-owner"), manifest().apk.replace("CXPalm/releases", "Other/releases"),
@@ -143,6 +143,12 @@ class UpdateTest {
     @Test fun githubRedirectsAreRepositoryBoundedAndNeverCarryLoginHeaders() = temp { file ->
         val cdn = "https://release-assets.githubusercontent.com/github-production-release-asset/1433754725/fixture-asset?sig=fixture"
         assertEquals(cdn, updateRedirectUrl(manifest().apk, cdn))
+        val renamed=manifest().apk.replace("/702165405/","/retired7Coder/")
+        assertEquals(renamed,updateRedirectUrl(manifest().apk,renamed))
+        assertEquals(cdn,updateRedirectUrl(renamed,cdn))
+        for(target in listOf(renamed+"?x=1",renamed+"#x",renamed.replace("CXPalm/releases","Other/releases"),renamed.replace("-debug.apk","-other.apk"))) {
+            rejected {updateRedirectUrl(manifest().apk,target)}
+        }
         for (target in listOf(cdn.replace("1433754725", "99"), cdn.replace("release-assets.githubusercontent.com", "evil.invalid"),
             cdn.replace("https://", "http://"), cdn+"#fragment", cdn.replace("https://", "https://user@"), manifest().apk)) {
             rejected { updateRedirectUrl(manifest().apk, target) }
@@ -153,10 +159,10 @@ class UpdateTest {
             assertNull(request.header("Authorization")); assertNull(request.header("Cookie")); assertNull(request.header("Origin"))
             val redirect = request.url.host == "github.com"
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(if(redirect) 302 else 200).message("fixture")
-                .header("Location", cdn).body((if(redirect) byteArrayOf() else bytes).toResponseBody()).build()
+                .header("Location", if(request.url.toString()==manifest().apk)renamed else cdn).body((if(redirect) byteArrayOf() else bytes).toResponseBody()).build()
         }.build()
         UpdateTransport(client).download(manifest(), file)
-        assertEquals(listOf(manifest().apk, cdn), urls)
+        assertEquals(listOf(manifest().apk, renamed, cdn), urls)
         assertArrayEquals(bytes, file.readBytes())
         val loop = updateHttpClient().newBuilder().addInterceptor { chain ->
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(302).message("fixture")

@@ -52,6 +52,9 @@ func (s *Server) file(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authorization rejected", 401)
 		return
 	}
+	if mediaUnchanged(w, r, data) {
+		return
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")

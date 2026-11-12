@@ -15,15 +15,19 @@ import io.github.u702165405.cxpalm.R
 import io.github.u702165405.cxpalm.BuildConfig
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun SettingsPage(state: ViewState, update: UpdateState, updates: UpdateManager,
     manageComputers: () -> Unit, notificationAllowed: Boolean, enableNotifications: () -> Unit, enableBackground: () -> Unit,
-    stopBackground: () -> Unit, notificationSettings: () -> Unit, install: () -> Unit) {
+    stopBackground: () -> Unit, notificationSettings: () -> Unit, install: () -> Unit, clearMediaCache: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { SectionTitle(tr("设置"), tr("真实连接，清晰掌控")) }
         item { AppearanceSection() }
         item { LanguageSection() }
+        item { MediaCacheSection(clearMediaCache) }
         item { UpdateSection(update, updates, install) }
         item {
             Surface(onClick = manageComputers, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
@@ -54,6 +58,24 @@ import java.util.Date
             }
         } }
         item { Text(tr("CXPalm 是独立开发的 Codex 配套工具，非 OpenAI 官方应用。开发签名 APK，请仅从固定发布站点安装。"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+@Composable private fun MediaCacheSection(clear: ()->Unit) {
+    val scope=rememberCoroutineScope()
+    var busy by remember {mutableStateOf(false)}
+    var status by remember {mutableStateOf("")}
+    SettingsSection(tr("图片与文档缓存")) {
+        Text(tr("重复查看时复用本地文件，只确认授权和文件版本；原文件变化后重新下载。最多保留 64 MiB、24 项，7 天后过期。"))
+        OutlinedButton(enabled=!busy,onClick={
+            busy=true
+            scope.launch {
+                try {withContext(Dispatchers.IO){clear()};status="缓存已清除，下次查看将重新下载。"}
+                catch(_:Exception){status="缓存清理失败，请重试。"}
+                finally{busy=false}
+            }
+        }) {Text(tr(if(busy)"正在清理…" else "清除图片和文档缓存"))}
+        Text(tr(if(status.isEmpty())"清理不会删除聊天、草稿或已保存到下载目录的文件。" else status),style=MaterialTheme.typography.bodySmall)
     }
 }
 

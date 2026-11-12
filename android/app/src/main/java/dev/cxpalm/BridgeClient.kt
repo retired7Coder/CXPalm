@@ -26,6 +26,7 @@ class BridgeClient(context: Context) {
     private val store = SecureStore(context.applicationContext)
     private val main = Handler(Looper.getMainLooper())
     private val reading=ReadingCache(java.io.File(context.noBackupFilesDir,"reading-v1"),store)
+    private val media=MediaCache(java.io.File(context.noBackupFilesDir,"media-v1"),store::sealBytes,store::unsealBytes)
     private var saveReading: Runnable? = null
     private var cacheRestoreTicket=0
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS)
@@ -141,7 +142,7 @@ class BridgeClient(context: Context) {
                     val list=mutable.value.computers.filterNot {it.id==computer.id}
                     store.put("computers",savedComputers(list))
                     if(mutable.value.current?.id==computer.id){disconnectChat();store.put("current",null);update {ViewState(computers=list)}}else update {it.copy(computers=list)}
-                    reading.clear(computer);startMonitoring()
+                    reading.clear(computer);forgetMedia(computer);startMonitoring()
                 }catch(_: Exception){reportError("无法保存退出结果，请重试。") }finally{loginBusy=false}
             }}
         })
@@ -202,7 +203,7 @@ class BridgeClient(context: Context) {
                 }
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { main.post { if (gen == generation && response?.code in listOf(401, 403)) {
-                wanted=false;++cacheRestoreTicket;saveReading?.let(main::removeCallbacks);reading.clear(computer)
+                wanted=false;++cacheRestoreTicket;saveReading?.let(main::removeCallbacks);reading.clear(computer);forgetMedia(computer)
                 update { it.copy(snapshot=null,historyPage=null,historyIndex=null,sessions=emptyList(),projects=emptyList(),cached=false,readToken="") }
             }; lost(gen, "Connection lost${response?.code?.let { ": $it" } ?: ""}") } }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code,reason) }
@@ -416,32 +417,28 @@ class BridgeClient(context: Context) {
             }
         }
     }
-    suspend fun image(message: Message,image: MessageImage): ByteArray = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val selected=mutable.value;val computer=selected.current?:error("Disconnected");val thread=selected.thread?:error("No conversation")
-        require(selected.connected&&!selected.cached)
-        val body=JSONObject().put("thread",thread).put("turn",message.turn).put("item",message.id.removePrefix(message.turn+":")).put("image",image.id).toString().toRequestBody("application/json".toMediaType())
-        val request=Request.Builder().url(computer.origin+"/api/v1/chat/image").header("Origin",computer.origin).header("Authorization","Bearer ${computer.token}").post(body).build()
-        client.newBuilder().callTimeout(30,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build().newCall(request).execute().use {response ->
-            require(response.code==200 && response.header("Content-Type") in listOf("image/png","image/jpeg","image/gif","image/webp"))
-            val bytes=response.body?.byteStream()?.use {input ->
-                val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(32768)
-                while(out.size()<=MAX_ATTACHMENT_SIZE){val n=input.read(buffer,0,minOf(buffer.size,MAX_ATTACHMENT_SIZE.toInt()+1-out.size()));if(n<0)break;out.write(buffer,0,n)};out.toByteArray()
-            }?:error("Image unavailable")
-            require(bytes.size in 1..MAX_ATTACHMENT_SIZE.toInt() && mutable.value.current==computer && mutable.value.thread==thread)
-            bytes
-        }
+    fun clearMediaCache() = media.clear()
+    private fun forgetMedia(computer: Computer) {Thread {runCatching {media.clear(readingScope(computer))}}.start()}
+    suspend fun image(source: ViewState,message: Message,image: MessageImage): ByteArray {
+        require(image in message.images)
+        return readMedia(source,message,"image",image.id)
     }
-    suspend fun file(source: ViewState,message: Message,file: MessageFile): ByteArray = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        require(composerSourceMatches(source,mutable.value)&&mutable.value.connected&&!mutable.value.cached) {"Reconnect to the original chat"}
-        val computer=source.current!!;val thread=source.thread!!
-        require(file in message.files && file.id.matches(Regex("[a-f0-9]{64}")))
-        val body=JSONObject().put("thread",thread).put("turn",message.turn).put("item",message.id.removePrefix(message.turn+":")).put("file",file.id).toString().toRequestBody("application/json".toMediaType())
-        val request=Request.Builder().url(computer.origin+"/api/v1/chat/file").header("Origin",computer.origin).header("Authorization","Bearer ${computer.token}").post(body).build()
-        client.newBuilder().callTimeout(60,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build().newCall(request).execute().use {response ->
-            require(response.code==200&&response.header("Content-Type")=="application/octet-stream") {"File unavailable"}
-            val bytes=response.body?.byteStream()?.use(::returnedFileBytes)?:error("File unavailable")
-            require(composerSourceMatches(source,mutable.value)&&mutable.value.connected&&!mutable.value.cached) {"Chat changed"}
-            bytes
+    suspend fun file(source: ViewState,message: Message,file: MessageFile): ByteArray {
+        require(file in message.files)
+        return readMedia(source,message,"file",file.id)
+    }
+    private suspend fun readMedia(source: ViewState,message: Message,kind: String,id: String): ByteArray = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val valid={composerSourceMatches(source,mutable.value)&&mutable.value.connected&&!mutable.value.cached}
+        require(valid()&&id.matches(Regex("[a-f0-9]{64}"))) {"Reconnect to the original chat"}
+        val computer=source.current!!;val thread=source.thread!!;val item=message.id.removePrefix(message.turn+":")
+        media.read(readingScope(computer),kind,thread,message.turn,item,id,valid) {revision ->
+            val body=JSONObject().put("thread",thread).put("turn",message.turn).put("item",item).put(kind,id).toString().toRequestBody("application/json".toMediaType())
+            val request=Request.Builder().url(computer.origin+"/api/v1/chat/"+kind).header("Origin",computer.origin).header("Authorization","Bearer ${computer.token}").post(body)
+            if(revision!=null)request.header("X-CXPalm-Revision",revision)
+            client.newBuilder().callTimeout(if(kind=="image")30 else 60,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).build().newCall(request.build()).execute().use {response ->
+                val bytes=if(response.code==200)response.body?.byteStream()?.use(::returnedFileBytes)?:error("File unavailable") else byteArrayOf()
+                MediaResponse(response.code,bytes,response.header("Content-Type").orEmpty(),response.header("ETag").orEmpty())
+            }
         }
     }
     private fun savedSkills(computer: String?, thread: String?): Set<String> = try {

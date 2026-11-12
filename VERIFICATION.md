@@ -4,6 +4,41 @@ Public verification records exclude real conversation content, device identifier
 private deployment paths, credentials and raw logs. Tests use synthetic data unless
 explicitly described as deployment connectivity or public-byte checks.
 
+## 0.0.11 / build13
+
+- Web and Android reuse image/document bodies only after an authenticated read
+  validates the original message reference and rooted file. A content SHA-256
+  revision confirms unchanged bodies with an empty HTTP 204 response; changed
+  bytes are downloaded again. Deleted files return 404 and revoked access 401,
+  even with a previously valid revision. HTTP responses remain `no-store`.
+- Media caches retain at most 64 MiB and 24 entries for seven days, separately
+  scoped by computer/authorization and exact message identity. Android uses
+  encrypted private files with atomic replacement and at most two concurrent
+  transfers. Clearing fences pending reads and preserves drafts/exported files.
+  This is bandwidth reuse, not an offline grant to read protected files.
+- All 103 Node checks and isolated strict-CSP Chromium desktop/mobile checks
+  pass. Actual browser fixtures verify one image transfer across preview,
+  repeated original views and reload; document revalidation and replacement;
+  same-chat reselection; and cleanup without losing the draft. The four README
+  images use the current Web client and fabricated content.
+- Full Go tests and vet pass; Windows amd64 and macOS amd64/arm64 cross-builds
+  pass. All three standalone archives contain the exact tested binaries and
+  omit VCS build metadata, configuration, credentials and runtime data.
+- Android reports 95 unit checks: 94 pass and one opt-in public-download check
+  is initially skipped. Lint reports zero errors and ten existing warnings.
+  The normal APK keeps its package and development signer and excludes
+  instrumentation/rendering probes and unit-test classes. Cache crypto tests
+  use a JVM AES-GCM fixture; no emulator, physical-device or macOS runtime
+  acceptance is claimed for this release.
+- GitHub repository 1433754725 and owner 129164549 are unchanged after the
+  account rename to retired7Coder. New clients use the canonical manifest
+  origin and permit only the exact old-to-new account asset path followed by
+  the same repository's pinned CDN; altered assets/owners and redirected
+  manifests are rejected. Legacy manifest/asset identities remain compatible,
+  but build11 and earlier require one manual upgrade past the rename.
+- Final publication, updater-download and deployment checks are pending and
+  will be recorded after the immutable release assets are publicly verified.
+
 ## 0.0.10 / build11
 
 - Corrects the input-suggestion implementation: independent model generation,

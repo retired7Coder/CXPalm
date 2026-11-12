@@ -1,9 +1,9 @@
 {
-  "version": "0.0.10",
-  "versionCode": 11,
+  "version": "0.0.11",
+  "versionCode": 13,
   "package": "io.github.u702165405.cxpalm.debug",
-  "apk": "https://github.com/702165405/CXPalm/releases/download/v0.0.10-build11/CXPalm-0.0.10-build11-debug.apk",
-  "size": 9939270,
-  "sha256": "9c6e3d320176aacaebfec9536175e6607a4c558e6fac970065a8b77336b26657",
-  "notes": "CXPalm 0.0.9 / build9: Web session lists show live elapsed time for running and approval-waiting turns without opening a chat, and actual duration for completed, interrupted or failed turns when official timing is available. Timers use the gateway clock, update in place and stop showing live elapsed time when disconnected. Missing timing is labelled as pending synchronization. Reuses passive official desktop subscriptions; no additional model request or main-chat executor. Retains document downloads, input suggestions and earlier fixes. Existing configuration and authorizations are preserved."
+  "apk": "https://github.com/702165405/CXPalm/releases/download/v0.0.11-build13/CXPalm-0.0.11-build13-debug.apk",
+  "size": 9956078,
+  "sha256": "31d586e3bf7f16cc60a599afbda86f9e77c8e7552aecc018531974b3d861aa38",
+  "notes": "CXPalm 0.0.11 / build13: Reuse downloaded images and documents in Web and Android. Image previews and full-size views share cached content, including after reload or app restart. Each reuse confirms authorization and the original file's SHA-256 revision; unchanged files return a confirmation without retransmitting file bytes, while changed files are downloaded again. Missing files and revoked access never return cached content. Cache retention is limited to 64 MiB, 24 entries and 7 days; Android storage is encrypted. Settings now include cache cleanup without deleting chats, drafts or exported files. The original computer must remain online for access and version confirmation. GitHub account 702165405 is now retired7Coder with the same repository and owner IDs; build13 accepts only that exact renamed asset path before the pinned repository CDN. Older desktop/App updaters require one manual in-place update after this rename; do not uninstall or clear data. Package/signing identity, existing configuration and authorizations are preserved. Native gray-text suggestion synchronization remains unavailable and no substitute model request is generated."
 }

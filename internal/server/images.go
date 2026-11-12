@@ -45,6 +45,9 @@ func (s *Server) image(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authorization rejected", 401)
 		return
 	}
+	if mediaUnchanged(w, r, data) {
+		return
+	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")

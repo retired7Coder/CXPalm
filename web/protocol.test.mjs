@@ -1,6 +1,94 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SnapshotStream,Bridge, conversation, approvalDecisions, contextUsage, StateSequence, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {SnapshotStream,Bridge, conversation, approvalDecisions, contextUsage, StateSequence, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, MediaCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+
+function mediaFixture() {
+  const entries=new Map(),requests=[];
+  const storage={open:async()=>({
+    keys:async()=>[...entries.keys()].map(url=>new Request(url)),
+    match:async key=>entries.get(typeof key==='string'?key:key.url)?.clone(),
+    put:async(key,response)=>entries.set(typeof key==='string'?key:key.url,response.clone()),
+    delete:async key=>entries.delete(typeof key==='string'?key:key.url),
+  })};
+  let value='original document',status=200,clock=Date.now(),release;
+  const cache=new MediaCache({storage,origin:'https://fixture.example',now:()=>clock,request:async(url,options)=>{
+    requests.push({url,...options});if(release)await release;
+    if(status!==200)return new Response(null,{status});
+    const blob=new Blob([value],{type:url.endsWith('/image')?'image/png':'application/octet-stream'});
+    const etag=`"sha256-${await cache.digest(blob)}"`;
+    if(options.headers['X-CXPalm-Revision']===etag)return new Response(null,{status:204,headers:{ETag:etag}});
+    return new Response(blob,{headers:{'Content-Type':blob.type,ETag:etag}});
+  }});
+  const fields={thread:'thread',turn:'turn',item:'item',file:'a'.repeat(64)};
+  return {cache,entries,requests,fields,storage,setValue:v=>value=v,setStatus:v=>status=v,advance:v=>clock+=v,
+    hold:()=>{let done;release=new Promise(resolve=>done=resolve);return()=>{release=null;done();};}};
+}
+test('media cache survives reload, revalidates access, refreshes changed contents, and clears without replay',async()=>{
+  const f=mediaFixture();
+  assert.equal(await (await f.cache.read('scope','file',f.fields)).text(),'original document');
+  assert.equal(f.requests[0].headers['X-CXPalm-Revision'],undefined);
+  const loaded=new MediaCache({storage:f.storage,origin:'https://fixture.example',request:f.cache.request});
+  assert.equal(await (await loaded.read('scope','file',f.fields)).text(),'original document');
+  assert.match(f.requests[1].headers['X-CXPalm-Revision'],/^"sha256-/);
+  f.setValue('modified document');
+  assert.equal(await (await loaded.read('scope','file',f.fields)).text(),'modified document');
+  await loaded.read('other-authorization','file',f.fields);
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  await loaded.read('scope','file',{...f.fields,thread:'other-thread'});
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  f.setStatus(401);await assert.rejects(loaded.read('scope','file',f.fields),/授权/);
+  f.setStatus(200);await loaded.read('scope','file',f.fields);
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  await loaded.clear();
+  assert.equal(f.entries.size,0);
+  await loaded.read('scope','file',f.fields);
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  assert(f.requests.every(r=>r.method==='POST'&&r.cache==='no-store'&&r.redirect==='error'));
+});
+test('media cache coalesces reads and never restores cleared or switched requests',async()=>{
+  const f=mediaFixture(),release=f.hold();
+  const first=f.cache.read('scope','file',f.fields),second=f.cache.read('scope','file',f.fields);
+  await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setTimeout(resolve,10));
+  release();
+  assert.equal(await (await first).text(),await (await second).text());
+  assert.equal(f.requests.length,1);
+  const unblock=f.hold(),pending=f.cache.read('scope','file',{...f.fields,file:'b'.repeat(64)});
+  await new Promise(resolve=>setTimeout(resolve,10));
+  await f.cache.clear();unblock();
+  await assert.rejects(pending,/改变/);
+  assert.equal(f.entries.size,0);
+  let valid=true;const end=f.hold(),switched=f.cache.read('scope','file',f.fields,()=>valid);
+  await new Promise(resolve=>setTimeout(resolve,10));valid=false;end();
+  await assert.rejects(switched,/改变/);
+  assert.equal(f.entries.size,0);
+});
+test('media cache rejects corrupt, expired, removed and incorrectly typed copies',async()=>{
+  const f=mediaFixture();
+  await f.cache.read('scope','file',f.fields);
+  const [key,response]=[...f.entries][0];
+  f.entries.set(key,new Response('corrupt',{headers:response.headers}));
+  await f.cache.read('scope','file',f.fields);
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  f.advance(8*86400000);await f.cache.read('scope','file',f.fields);
+  assert.equal(f.requests.at(-1).headers['X-CXPalm-Revision'],undefined);
+  f.setStatus(404);await assert.rejects(f.cache.read('scope','file',f.fields),/HTTP 404/);
+  assert.equal(f.entries.size,0);
+  const invalid=new MediaCache({request:async()=>new Response('<script>bad()</script>',{headers:{'Content-Type':'text/html'}})});
+  await assert.rejects(invalid.read('scope','file',f.fields),/类型/);
+});
+test('media cache bounds retained entry count and total bytes and works without disk storage',async()=>{
+  const f=mediaFixture();
+  for(let index=0;index<26;index++){f.advance(1000);await f.cache.read('scope','file',{...f.fields,item:String(index)});}
+  assert.equal(f.entries.size,24);
+  await f.cache.clear();
+  f.setValue('x'.repeat(17*1024*1024));
+  for(let index=0;index<4;index++){f.advance(1000);await f.cache.read('scope','file',{...f.fields,item:String(index)});}
+  assert.equal(f.entries.size,3);
+  assert([...f.entries.values()].reduce((total,r)=>total+Number(r.headers.get('X-CXPalm-Size')),0)<=64*1024*1024);
+  const memory=new MediaCache({storage:{open:async()=>{throw Error('blocked');}},request:f.cache.request});
+  await memory.read('scope','file',f.fields);await memory.read('scope','file',f.fields);
+  assert.match(f.requests.at(-1).headers['X-CXPalm-Revision'],/^"sha256-/);
+});
 
 test('output-only messages retain bounded file identities without manufacturing local URLs',()=>{
   const file={id:'a'.repeat(64),name:'review.xlsx',kind:'xlsx'};

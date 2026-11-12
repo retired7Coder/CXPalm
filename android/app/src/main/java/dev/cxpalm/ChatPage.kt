@@ -409,7 +409,7 @@ fun sessionDate(session: JSONObject): String {
             }
             itemsIndexed(messages, key = { _, message -> "message:${message.id}" }) { index, message ->
                 Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    MessageCard(message,client::item,client::image,{message,file -> client.file(state,message,file)})
+                    MessageCard(message,client::item,{message,image -> client.image(state,message,image)},{message,file -> client.file(state,message,file)})
                     if(index in footerIndices) CompletedTurnTime(timings[message.turn])
                 }
             }

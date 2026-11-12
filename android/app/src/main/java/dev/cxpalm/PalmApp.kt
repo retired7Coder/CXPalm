@@ -104,7 +104,7 @@ import io.github.u702165405.cxpalm.R
                     }
                     else -> savedScreens.SaveableStateProvider("settings") {
                         SettingsPage(state, update, updates, { page = "computers" },
-                            notificationAllowed, enableNotifications, enableBackground, stopBackground, notificationSettings, install)
+                            notificationAllowed, enableNotifications, enableBackground, stopBackground, notificationSettings, install, client::clearMediaCache)
                     }
                 }
             }

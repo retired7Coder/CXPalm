@@ -43,7 +43,7 @@ def main():
         binary.parent.mkdir(exist_ok=True)
         env = dict(os.environ, GOOS=system, GOARCH=arch, CGO_ENABLED='0',
                    GOPATH=str(ROOT / '.tools/gopath'), GOCACHE=str(ROOT / '.tools/gocache'))
-        subprocess.run([str(go), 'build', '-trimpath', '-o', str(binary), './cmd/cxpalm'],
+        subprocess.run([str(go), 'build', '-trimpath', '-buildvcs=false', '-o', str(binary), './cmd/cxpalm'],
                        cwd=ROOT, env=env, check=True)
         build_info = subprocess.check_output([str(go), 'version', '-m', str(binary)], text=True)
         if ': go1.27.3' not in build_info:

@@ -122,6 +122,117 @@ export function connectionPresentation({device,connecting,connected,selected,des
 export function operationLabel(method) {
   return ({'chat.send':'发送消息','chat.steer':'引导当前任务','chat.queue':'加入消息队列','chat.queue.cancel':'移除排队消息','chat.stop':'停止当前任务','chat.approve':'答复审批','chat.settings':'修改会话设置','chat.goal':'修改原生目标','chat.compact':'压缩上下文','chat.notifications':'修改会话通知','sessions.create':'新建会话','sessions.rename':'重命名会话','sessions.archive':'归档会话','sessions.unarchive':'取消归档'})[method]||'会话操作';
 }
+export class MediaCache {
+  constructor({storage=globalThis.caches,request=(...args)=>globalThis.fetch(...args),origin=globalThis.location?.origin,now=Date.now}={}) {
+    this.storage=storage;this.request=request;this.origin=origin||'https://cxpalm.invalid';this.now=now;
+    this.pending=new Map();this.memory=new Map();this.generation=0;this.writes=Promise.resolve();
+  }
+  async digest(value) {
+    const bytes=typeof value==='string'?new TextEncoder().encode(value):await value.arrayBuffer();
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
+  }
+  async cache() { try{return await this.storage?.open('cxpalm-media-v1');}catch{return null;} }
+  async key(scope,kind,fields) {
+    return `${this.origin}/.cxpalm-media/${await this.digest(scope)}/${await this.digest(JSON.stringify([kind,fields]))}`;
+  }
+  serial(action) {
+    const operation=this.writes.catch(()=>{}).then(action);
+    this.writes=operation.catch(()=>{});return operation;
+  }
+  async clear(scope) {
+    this.generation++;this.pending.clear();
+    const prefix=scope===undefined?null:`${this.origin}/.cxpalm-media/${await this.digest(scope)}/`;
+    await this.serial(async()=>{
+      for(const key of this.memory.keys())if(!prefix||key.startsWith(prefix))this.memory.delete(key);
+      const cache=await this.cache();if(!cache)return;
+      for(const key of await cache.keys())if(!prefix||key.url.startsWith(prefix))await cache.delete(key);
+    });
+  }
+  async forget(key) {
+    await this.serial(async()=>{this.memory.delete(key);const cache=await this.cache();await cache?.delete(key);});
+  }
+  async saved(key) {
+    await this.writes;
+    const cache=await this.cache();
+    const response=await cache?.match(key).catch(()=>null)||this.memory.get(key)?.clone();
+    if(!response)return null;
+    const age=this.now()-Number(response.headers.get('X-CXPalm-Cached-At'));
+    const size=Number(response.headers.get('X-CXPalm-Size'));
+    if(age<0||age>7*86400000||!Number.isFinite(size)||size<0||size>20*1024*1024){await this.forget(key);return null;}
+    const blob=await response.blob(),etag=response.headers.get('ETag');
+    if(blob.size!==size||etag!==`"sha256-${await this.digest(blob)}"`){await this.forget(key);return null;}
+    return {blob,etag};
+  }
+  async save(key,blob,etag,generation) {
+    await this.serial(async()=>{
+      if(generation!==this.generation)return;
+      const response=new Response(blob,{headers:{'Content-Type':blob.type,'ETag':etag,'X-CXPalm-Size':String(blob.size),'X-CXPalm-Cached-At':String(this.now())}});
+      const cache=await this.cache();
+      let stored=false;
+      if(cache)try{await cache.put(key,response.clone());stored=true;}catch{}
+      if(!stored)this.memory.set(key,response);
+      else this.memory.delete(key);
+      const entries=cache?await cache.keys():[];
+      const records=[];
+      for(const entry of entries){const item=await cache.match(entry);if(item)records.push({key:entry,size:Number(item.headers.get('X-CXPalm-Size'))||0,at:Number(item.headers.get('X-CXPalm-Cached-At'))||0});}
+      for(const [entry,item] of this.memory)records.push({key:entry,size:Number(item.headers.get('X-CXPalm-Size'))||0,at:Number(item.headers.get('X-CXPalm-Cached-At'))||0,memory:true});
+      records.sort((a,b)=>b.at-a.at);
+      let bytes=0,count=0;
+      for(const record of records){
+        bytes+=record.size;count++;
+        if(bytes>64*1024*1024||count>24||this.now()-record.at>7*86400000){
+          if(record.memory)this.memory.delete(record.key);else await cache.delete(record.key);
+        }
+      }
+    }).catch(()=>{});
+  }
+  async read(scope,kind,fields,valid=()=>true) {
+    if(!['image','file'].includes(kind)||!valid())throw new Error('请连接原电脑并打开此会话后读取。');
+    fields={...fields};
+    const generation=this.generation,key=await this.key(scope,kind,fields),pendingKey=`${generation}:${key}`;
+    const current=()=>generation===this.generation&&valid();
+    if(!current())throw new Error('读取目标已改变，请重新打开。');
+    if(this.pending.has(pendingKey)){
+      const blob=await this.pending.get(pendingKey);
+      if(!current())throw new Error('读取目标已改变，请重新打开。');
+      return blob;
+    }
+    const operation=(async()=>{
+      let saved=await this.saved(key);
+      const allowed=kind==='image'?['image/png','image/jpeg','image/gif','image/webp']:['application/octet-stream'];
+      if(saved&&(!allowed.includes(saved.blob.type)||(kind==='image'&&!saved.blob.size))){await this.forget(key);saved=null;}
+      if(!current())throw new Error('读取目标已改变，请重新打开。');
+      const headers={'Content-Type':'application/json'};
+      if(saved)headers['X-CXPalm-Revision']=saved.etag;
+      const response=await this.request(`/api/v1/chat/${kind}`,{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',headers,body:JSON.stringify(fields),signal:AbortSignal.timeout(kind==='image'?30000:60000)});
+      if(!current())throw new Error('读取目标已改变，请重新打开。');
+      if(response.status===401||response.status===403){await this.clear(scope);throw new Error('授权已失效，请重新登录原电脑。');}
+      if(response.status===204){
+        if(!saved||response.headers.get('ETag')!==saved.etag)throw new Error('缓存版本无法确认，请重试。');
+        if(!current())throw new Error('读取目标已改变，请重新打开。');
+        return saved.blob;
+      }
+      if(response.status!==200){if(response.status===404)await this.forget(key);throw new Error(`文件暂不可用（HTTP ${response.status}），请检查电脑连接或原文件。`);}
+      const type=response.headers.get('Content-Type')||'';
+      if(!allowed.includes(type))throw new Error('文件响应类型无法验证。');
+      const reader=response.body.getReader(),chunks=[];let size=0;
+      try {for(;;){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>20*1024*1024)throw new Error('文件超过 20 MiB 限制。');chunks.push(part.value);}}
+      finally{await reader.cancel().catch(()=>{});}
+      if(!current())throw new Error('读取目标已改变，请重新打开。');
+      const blob=new Blob(chunks,{type}),etag=response.headers.get('ETag');
+      if(kind==='image'&&!blob.size)throw new Error('图片内容为空，请重新读取。');
+      if(etag&&/^"sha256-[a-f0-9]{64}"$/.test(etag)){
+        if(etag!==`"sha256-${await this.digest(blob)}"`)throw new Error('文件内容校验失败，请重新读取。');
+        await this.save(key,blob,etag,generation);
+      }
+      if(!current())throw new Error('读取目标已改变，请重新打开。');
+      return blob;
+    })();
+    this.pending.set(pendingKey,operation);
+    try{return await operation;}finally{if(this.pending.get(pendingKey)===operation)this.pending.delete(pendingKey);}
+  }
+}
+
 export class AttachmentUploads {
   constructor({storage,changed=()=>{},request=(url,options)=>fetch(url,options),timeout=65000}){Object.assign(this,{storage,changed,request,timeout});this.jobs=new Map();this.loaded=new Set();}
   list(scope){

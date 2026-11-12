@@ -8,7 +8,7 @@ const {pipeline}=require('node:stream/promises');
 const {Readable}=require('node:stream');
 const {readJSON,atomicJSON}=require('./settings.cjs');
 const RELEASES='https://github.com/702165405/CXPalm/releases/download';
-const FEED='https://raw.githubusercontent.com/702165405/CXPalm/main/updates/desktop-download.json';
+const FEED='https://raw.githubusercontent.com/retired7Coder/CXPalm/main/updates/desktop-download.json';
 const MAX_SIZE=512*1024*1024;
 function versionParts(value){
   if(typeof value!=='string'||!/^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/.test(value))throw new Error('更新版本号无效。');
@@ -26,13 +26,16 @@ function validateManifest(raw){
   if(raw.releaseLine!==undefined&&(typeof raw.releaseLine!=='string'||!/^[a-z0-9-]{1,40}$/.test(raw.releaseLine)))throw new Error('更新发布系列无效。');
   return Object.freeze({...(raw.build===undefined?{}:{build:raw.build}),...(raw.releaseLine?{releaseLine:raw.releaseLine}:{}),version:raw.version,url:expected,size:raw.size,sha256:raw.sha256.toLowerCase(),notes:raw.notes});
 }
-function releaseAsset(url){return /^https:\/\/github\.com\/702165405\/CXPalm\/releases\/download\/v\d+\.\d+\.\d+(?:-build\d+)?\/CXPalm-[A-Za-z0-9._-]+\.exe$/.test(url);}
+function releaseAsset(url){return /^https:\/\/github\.com\/(?:702165405|retired7Coder)\/CXPalm\/releases\/download\/v\d+\.\d+\.\d+(?:-build\d+)?\/CXPalm-[A-Za-z0-9._-]+\.exe$/.test(url);}
 function redirectURL(from,location){
   const previous=new URL(from);
   if(!releaseAsset(from)&&!cdnAsset(previous))throw new Error('更新跳转来源不受信任。');
   if(typeof location!=='string'||location.length>16384)throw new Error('更新跳转地址无效。');
   const next=new URL(location,previous);
-  if(!cdnAsset(next))throw new Error('更新跳转不属于此仓库的 GitHub 下载服务。');
+  // The renamed account owns the same pinned repository; the asset path must stay exact.
+  const renamed=releaseAsset(from)&&from.startsWith('https://github.com/702165405/CXPalm/')&&
+    next.href===from.replace('https://github.com/702165405/CXPalm/','https://github.com/retired7Coder/CXPalm/');
+  if(!renamed&&!cdnAsset(next))throw new Error('更新跳转不属于此仓库的 GitHub 下载服务。');
   return next.href;
 }
 function cdnAsset(url){
