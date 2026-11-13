@@ -1,5 +1,5 @@
 import {markdown} from './markdown-v1.mjs';
-import {seedHistoryIndex, Bridge, conversation, approvalDecisions, contextUsage, NotificationInbox, StateSequence, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, MediaCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {seedHistoryIndex, Bridge, conversation, approvalDecisions, contextUsage, NotificationInbox, StateSequence, mergeSessionReadState, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, MediaCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
 
 const $ = id => document.getElementById(id);
 const state = {page:'chat',device:null,version:'',sessions:[],projects:[],archived:false,project:'',listLimit:100,listSubscription:null,hasMore:false,settingsBase:null,editGroup:null,selected:null,snapshot:null,desktop:false,reconnect:null,openTools:new Set(),catalog:{models:[],skills:[]},skills:new Set()};
@@ -194,6 +194,7 @@ const bridge = new Bridge({
       for(const message of document.querySelectorAll('.panel-error'))if(recoveredErrors.has(message.textContent))message.remove();
       state.connectionError=null;
       sequences.reset();
+      state.readState=null;
       readToken=null;
       readAttempt=null;readSyncSupported=event.data.capabilities?.includes('chat.read')===true;
       inbox=new NotificationInbox(localStorage,`cxpalm:notifications:${bridge.device.id}`);
@@ -221,6 +222,14 @@ const bridge = new Bridge({
       if(Number.isSafeInteger(event.data.nativeSyncedAtMs)&&event.data.nativeSyncedAtMs>0)state.nativeSyncedAtMs=event.data.nativeSyncedAtMs;
       if(typeof event.data.archived==='boolean')state.selected.archived=event.data.archived;
       if (event.data.snapshot) { if(event.data.snapshot.hasUnreadTurn===false)readAttempt=null;state.snapshot = event.data.snapshot;state.cached=!event.data.connected&&!event.data.archived;rememberReading(true); timingAnchor={server:Number.isFinite(state.snapshot.observedAtMs)?state.snapshot.observedAtMs:Date.now(),local:performance.now()}; readToken=event.data.readToken||null; }
+      if(event.data.connected&&event.data.snapshot){
+        const update={id:event.data.id,live:true,sequence:event.data.sequence,unread:state.snapshot.hasUnreadTurn,readToken};
+        state.readState=mergeSessionReadState(state.readState||{id:update.id},update);
+        let changed=false;
+        state.sessions=state.sessions.map(row=>{const next=mergeSessionReadState(row,state.readState);if(next.unread!==row.unread)changed=true;return next;});
+        if(state.readState.readToken===readToken&&state.readState.sequence>update.sequence)state.snapshot={...state.snapshot,hasUnreadTurn:state.readState.unread};
+        if(changed)renderLists();
+      }
       if(event.data.connected)rememberNewChat();
       renderConversation();
       renderControls();
@@ -236,6 +245,7 @@ const bridge = new Bridge({
     } else if (event.type === 'notifications.status') {
       reminderSync(event.data.error||'');
     } else if (event.type === 'disconnected') {
+      state.readState=null;
       uploads.cancelAll();state.connecting=null;
       rememberReading();state.sessions=state.sessions.map(row=>({...row,live:false,status:'unknown',unread:null}));renderLists();state.cached=!!state.snapshot;state.desktop = false;state.historyLoading=false;readToken=null;readSyncSupported=false;++historyRequest;
       renderControls();
@@ -317,6 +327,9 @@ function renderControls() {
   const syncLabel=health.nativeSyncedAtMs?`最近原生同步：${new Date(health.nativeSyncedAtMs).toLocaleString()}`:'尚未收到同步时间';
   for(const [id,value] of [['connection',health.label],['connection-health-label',health.label],['connection-sync',syncLabel]])if($(id).textContent!==value)$(id).textContent=value;
   $('connection').title=health.label;$('connection-health').dataset.stage=health.kind;
+  const readUnavailable=available&&!state.cached&&!state.selected.archived&&state.snapshot?.hasUnreadTurn===true&&state.snapshot?.readSyncAvailable===false;
+  $('read-sync-status').hidden=!readUnavailable;
+  $('read-sync-status').textContent=readUnavailable?'已读尚未同步，蓝色仍表示官方桌面未读。请在电脑的官方 Codex 中打开当前会话，再回到网页查看最新回复。':'';
   $('connection').classList.toggle('online',bridge.connected);
   $('reconnect').hidden=!state.device||bridge.connected;
   $('message').disabled=!state.selected;
@@ -483,13 +496,13 @@ function renderLists() {
 }
 function applySessionPage(page){
   listTimingAnchor=Number.isFinite(page.observedAtMs)&&page.observedAtMs>0?{server:page.observedAtMs,local:performance.now()}:null;
-  state.sessionSync=page.sync;state.sessions=page.items||[];state.projects=page.projects||[];state.hasMore=page.hasMore;saveReadingSoon();
+  state.sessionSync=page.sync;state.sessions=(page.items||[]).map(row=>mergeSessionReadState(row,state.readState));state.projects=page.projects||[];state.hasMore=page.hasMore;saveReadingSoon();
   const fill=(id,includeAll)=>{const node=$(id),selected=node.value;const options=[];
     if(includeAll){const all=text('option','全部项目');all.value='';options.push(all);}
     const none=text('option',includeAll?'无项目':'无项目 · 独立工作目录');none.value='none';options.push(none);
     for(const p of state.projects){const option=text('option',p.name||p.id);option.value=p.id;options.push(option);}node.replaceChildren(...options);node.value=[...node.options].some(o=>o.value===selected)?selected:includeAll?'':node.options[0]?.value||'';};
   fill('project-filter',true);$('project-filter').value=state.project;fill('new-project',false);
-  if(state.selected){const current=state.sessions.find(row=>row.id===state.selected.id);if(current){state.selected.archived=current.archived;state.selected.title=current.title||state.selected.title;if(state.snapshot&&current.readToken===readToken&&typeof current.unread==='boolean'){state.snapshot={...state.snapshot,hasUnreadTurn:current.unread};if(!current.unread)readAttempt=null;}renderHeading();}}
+  if(state.selected){const current=state.sessions.find(row=>row.id===state.selected.id);if(current){state.selected.archived=current.archived;state.selected.title=current.title||state.selected.title;state.readState=mergeSessionReadState(state.readState||{id:current.id},current);if(state.snapshot&&current.readToken===readToken&&typeof current.unread==='boolean'){state.snapshot={...state.snapshot,hasUnreadTurn:current.unread};if(!current.unread)readAttempt=null;}renderHeading();}}
   renderLists();renderControls();markVisibleRead();
 }
 async function refreshLists(){
@@ -509,6 +522,7 @@ async function selectChat(selected,navigate=true,reconnecting=false){
     sentUserBefore=null;historyScrollArmed=false;historyAutoRetryAt=0;state.scrollToLatest=true;pinnedToLatest=true;state.historyAttempt=null;state.history=null;state.historyPage=null;state.historyLoading=false;questionTarget=null;questionSignature='';goalDraft=false;++historyRequest;
   }
   if(changed){
+    state.readState=null;
     const cached=readingCache?.get(selected.id);
     state.snapshot=cached?.snapshot||null;state.historyPage=cached?.historyPage||null;state.history=cached?.history||null;
     state.nativeSyncedAtMs=cached?.nativeSyncedAtMs||null;
@@ -854,7 +868,7 @@ new ResizeObserver(()=>requestAnimationFrame(updateQuestionPosition)).observe($(
 let readingAnchor=null;
 function captureReadingAnchor(){const box=$('messages'),top=box.getBoundingClientRect().top;const node=[...box.querySelectorAll('.message')].find(n=>n.getBoundingClientRect().bottom>top);readingAnchor=node?{node,offset:node.getBoundingClientRect().top-top}:null;}
 $('messages').addEventListener('scroll',captureReadingAnchor,{passive:true});
-const transcriptResize=new ResizeObserver(()=>{const box=$('messages');if(state.page!=='chat')return;if(pinnedToLatest&&!state.historyPage?.hasMore)box.scrollTop=box.scrollHeight;else if(readingAnchor?.node.isConnected)box.scrollTop+=readingAnchor.node.getBoundingClientRect().top-box.getBoundingClientRect().top-readingAnchor.offset;updateQuestionPosition();updateLatestButton();});transcriptResize.observe($('messages'));
+const transcriptResize=new ResizeObserver(()=>{const box=$('messages');if(state.page!=='chat')return;if(pinnedToLatest&&!state.historyPage?.hasMore)box.scrollTop=box.scrollHeight;else if(readingAnchor?.node.isConnected)box.scrollTop+=readingAnchor.node.getBoundingClientRect().top-box.getBoundingClientRect().top-readingAnchor.offset;updateQuestionPosition();updateLatestButton();markVisibleRead();});transcriptResize.observe($('messages'));
 
 async function write(method, fields, draft) {
   const receipt = await bridge.mutate(method, fields, draft);

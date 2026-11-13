@@ -1,6 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SnapshotStream,Bridge, conversation, approvalDecisions, contextUsage, StateSequence, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, MediaCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {SnapshotStream,Bridge, conversation, approvalDecisions, contextUsage, StateSequence, mergeSessionReadState, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, MediaCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+
+test('confirmed chat reads update the list and cannot be undone by an older list page',()=>{
+  const old={id:'chat',live:true,sequence:10,unread:true,readToken:'reply'};
+  const confirmed={...old,sequence:11,unread:false};
+  const remembered=mergeSessionReadState({id:'chat'},confirmed);
+  assert.equal(mergeSessionReadState(old,remembered).unread,false);
+  assert.equal(mergeSessionReadState(old,confirmed).unread,false);
+  assert.equal(mergeSessionReadState(confirmed,old),confirmed);
+  const newer={...old,sequence:12};
+  assert.equal(mergeSessionReadState(newer,confirmed),newer,'new native unread state was hidden');
+  for(const row of [{...old,id:'other'},{...old,live:false,unread:null},{...old,archived:true}])assert.equal(mergeSessionReadState(row,confirmed),row);
+  for(const update of [{...confirmed,live:false},{...confirmed,unread:null},{...confirmed,sequence:undefined}])assert.equal(mergeSessionReadState(old,update),old);
+});
 
 function mediaFixture() {
   const entries=new Map(),requests=[];

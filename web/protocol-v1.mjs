@@ -488,6 +488,13 @@ export class StateSequence {
   }
 }
 
+// List pages and chat snapshots travel independently; preserve the newer native read state.
+export function mergeSessionReadState(row, update) {
+  if(!update||row.id!==update.id||row.live===false||row.archived||!update.live||typeof update.unread!=='boolean'||!Number.isSafeInteger(update.sequence))return row;
+  if(Number.isSafeInteger(row.sequence)&&row.sequence>update.sequence)return row;
+  return {...row,live:true,sequence:update.sequence,unread:update.unread,readToken:update.readToken};
+}
+
 export class NotificationInbox {
   constructor(storage,key){this.storage=storage;this.key=key;this.volatile=false;this.seen=[];try{const ids=JSON.parse(storage.getItem(key)||'[]');if(Array.isArray(ids))this.seen=ids.filter(id=>typeof id==='string').slice(-256);}catch{}}
   get cursor(){try{return this.storage.getItem(this.key+':cursor')??this.position??this.seen.at(-1)??'';}catch{return this.position??this.seen.at(-1)??'';}}

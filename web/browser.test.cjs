@@ -41,7 +41,7 @@ async function main() {
   let holdHistory=false;const heldHistory=[];let sentTurn=null;let offlineSession=false;
   let sessionStatus=0;let holdSelected=false;let holdStartup=false;const heldStartup=[];
   let projects=[{id:'project-fixture',name:'项目 / Research'}];
-  const sessionPage=q=>({observedAtMs:Date.now(),items:q.archived&&!restored?[{id:'archive-fixture',title:'归档示例',archived:true,projectId:'project-fixture',projectName:'项目 / Research',status:'unknown',updated:1791648000}]:!q.archived?[{id:'main-fixture',title:'网页控制端 · 安全检查',cwd:'/isolated/chat-directory',projectId:'project-fixture',projectName:'项目 / Research',status:active?'running':'completed',live:!listHistorical,statusSource:listHistorical?'history':'desktop',latestTurn:{turnId:'t69',status:active?'inProgress':'completed',turnStartedAtMs,...(active?{}:{durationMs:764351})},unread:desktopReadToken!==replyToken,readToken:replyToken,lastReplyAt:1791648000,updated:1791648000}]:[],projects,hasMore:false,sync:{total:502,checked:502,live:1,scanning:false,error:listError}});
+  const sessionPage=q=>({observedAtMs:Date.now(),items:q.archived&&!restored?[{id:'archive-fixture',title:'归档示例',archived:true,projectId:'project-fixture',projectName:'项目 / Research',status:'unknown',updated:1791648000}]:!q.archived?[{id:'main-fixture',title:'网页控制端 · 安全检查',cwd:'/isolated/chat-directory',projectId:'project-fixture',projectName:'项目 / Research',status:active?'running':'completed',live:!listHistorical,statusSource:listHistorical?'history':'desktop',latestTurn:{turnId:'t69',status:active?'inProgress':'completed',turnStartedAtMs,...(active?{}:{durationMs:764351})},unread:desktopReadToken!==replyToken,sequence,readToken:replyToken,lastReplyAt:1791648000,updated:1791648000}]:[],projects,hasMore:false,sync:{total:502,checked:502,live:1,scanning:false,error:listError}});
   let queuedMessages=[];
   let notificationPreference={enabled:false};let uploadNumber=0;let rejectUpload=false;let holdUpload=false;let finishUpload;
   let nativeSyncedAtMs=Date.now()-5000;
@@ -1048,6 +1048,7 @@ async function main() {
     await page.locator('#messages').evaluate(n=>{n.scrollTop=n.scrollHeight;n.dispatchEvent(new Event('scroll'));});
     await page.waitForTimeout(150);assert.equal(desktopReadToken,replyToken,'desktop read confirmation not applied');
     holdReadConfirmation=true;desktopReadToken='';replyToken='f'.repeat(64);currentSocket.send(JSON.stringify(snapshot()));
+    const staleReadPage=sessionPage({});
     currentSocket.send(JSON.stringify({type:'sessions.page',data:{subscription:listSubscription,page:sessionPage({})}}));
     await page.locator('#messages').evaluate(n=>{n.scrollTop=n.scrollHeight;n.dispatchEvent(new Event('scroll'));});
     for(let i=0;i<40&&pendingReadConfirmations.length===0;i++)await page.waitForTimeout(25);
@@ -1056,6 +1057,10 @@ async function main() {
     assert.equal(await page.locator('#session-list .is-unread').count(),1,'unconfirmed read disappeared from list');
     holdReadConfirmation=false;pendingReadConfirmations.splice(0).forEach(confirm=>confirm());
     await page.waitForTimeout(150);assert.equal(desktopReadToken,replyToken);
+    await page.waitForFunction(()=>!document.querySelector('#session-list .is-unread'));
+    currentSocket.send(JSON.stringify({type:'sessions.page',data:{subscription:listSubscription,page:staleReadPage}}));
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('#session-list .is-unread').count(),0,'stale list restored unread after native confirmation');
     const readsBeforeNotificationToggle=sent.filter(q=>q.method==='chat.read').length;
     await page.locator('#notify-chat').click();await page.waitForFunction(()=>document.querySelector('#notify-chat').getAttribute('aria-pressed')==='true');
     await page.locator('#notify-chat').click();await page.waitForFunction(()=>document.querySelector('#notify-chat').getAttribute('aria-pressed')==='false');
@@ -1064,6 +1069,8 @@ async function main() {
     readSyncAvailable=false;notificationPreference={enabled:false,available:false,reason:'提醒存储暂不可用，正常聊天不受影响'};
     desktopReadToken='';replyToken='e'.repeat(64);currentSocket.send(JSON.stringify(snapshot()));
     await page.waitForFunction(()=>document.querySelector('#notify-chat').disabled);
+    await page.locator('#read-sync-status').waitFor({state:'visible'});
+    assert.match(await page.locator('#read-sync-status').innerText(),/已读尚未同步/);
     const readsWithoutIdentity=sent.filter(q=>q.method==='chat.read').length;
     await page.locator('#message').fill('identity unavailable must not block this draft');
     assert.equal(await page.locator('#send').isDisabled(),false);
@@ -1077,6 +1084,7 @@ async function main() {
     await page.waitForFunction(()=>!document.querySelector('#notify-chat').disabled);
     await page.locator('#messages').evaluate(n=>{n.scrollTop=n.scrollHeight;n.dispatchEvent(new Event('scroll'));});
     await page.waitForTimeout(150);assert.equal(desktopReadToken,replyToken,'read sync did not recover');
+    await page.locator('#read-sync-status').waitFor({state:'hidden'});
     await page.locator('#message').fill('');
     const uploadWrites=sent.filter(request=>['chat.send','chat.steer','chat.queue'].includes(request.method)).length;
     holdUpload=true;await page.locator('#message').fill('cancel upload draft');

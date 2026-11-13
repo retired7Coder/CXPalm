@@ -191,6 +191,12 @@ func TestDesktopReadConfirmedWithoutAuthFiles(t *testing.T) {
 	if err != nil || len(page.Items) != 1 || page.Items[0].Unread == nil || *page.Items[0].Unread {
 		t.Fatal("list diverged", err)
 	}
+	b.mu.Lock()
+	sequence := b.sessions["chat"].Sequence
+	b.mu.Unlock()
+	if page.Items[0].Sequence != sequence || sequence == 0 {
+		t.Fatal("list read state lost its native sequence")
+	}
 	if ok, err := b.MarkRead(context.Background(), "chat", token); err != nil || !ok {
 		t.Fatal("already-read acknowledgement failed", err)
 	}

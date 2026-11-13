@@ -171,6 +171,13 @@ desktop-authoritative synchronization, not a claim of distributed atomicity.
 `readSyncAvailable` and `officialReadSyncAvailable` now describe this native
 capability, not gateway receipt storage. No official file is edited.
 
+Live list rows include the same per-session `sequence` as chat snapshots. Web
+applies confirmed native read changes to the list immediately and keeps the newer
+sequence when list and chat deliveries arrive out of order. Reconnect resets the
+remembered sequence; another chat, offline cache or unconfirmed read request
+cannot clear unread. When native read synchronization is unavailable, Web shows
+an explicit status instead of silently skipping the read operation.
+
 Read broadcasts trigger a coalesced passive refresh of their existing original
 owner, not an optimistic overlay or a 15-second maintenance wait. Pending read
 confirmation may issue up to three passive snapshot renewals; it never resends

@@ -219,6 +219,7 @@ func (b *Bridge) Browse(ctx context.Context, query string, archived bool, projec
 func enrichSession(row *Session, s State) {
 	row.Live = s.Connected
 	if s.Connected {
+		row.Sequence = s.Sequence
 		row.StatusSource = "desktop"
 	}
 	raw := s.snapshotValue()

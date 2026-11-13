@@ -17,6 +17,7 @@ import (
 )
 
 type Session struct {
+	Sequence     uint64         `json:"sequence,omitempty"`
 	LatestTurn   map[string]any `json:"latestTurn,omitempty"`
 	StatusSource string         `json:"statusSource,omitempty"`
 	ReadToken    string         `json:"readToken,omitempty"`
