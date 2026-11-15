@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Accept verified original-owner state protocol 13 alongside 11 after the
+  Windows Codex desktop upgrade. Restore live state and follower control
+  availability while preserving owner, patch-lineage and non-replay checks.
+- Include the received version in unsupported-state errors and clear stale
+  revision authority when rejecting an unknown native protocol.
+
 ## 0.0.8 (build8)
 
 - Show returned-document cards for Codex file citations and local Markdown

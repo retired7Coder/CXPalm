@@ -70,6 +70,14 @@ owner. No main thread is independently resumed. Native execution snapshots are
 separate from phone projections, lazy history and versioned delta streams.
 A stream gap requests another read-only subscription, never a mutation replay.
 
+The gateway accepts verified native `thread-stream-state-changed` versions 11
+and 13. Version 13 was checked against Windows Codex 26.1111.2228.0 and a passive
+owner snapshot on 2026-11-15. Both retain the snapshot/patch envelope used here;
+owner identity, conversation identity and patch-base checks remain mandatory.
+Other versions fail closed, clear write authority and report the received
+version so the gateway can be updated. Follower control request versions are
+unchanged; accepting a state stream never starts another main-chat executor.
+
 `chat.state` may include top-level `nativeSyncedAtMs`, the gateway timestamp of
 the last validated original-owner snapshot or patch. It is omitted until such
 an event arrives. Heartbeats, history reads and presentation overlays do not

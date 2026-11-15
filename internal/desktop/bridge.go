@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -209,10 +210,11 @@ func (b *Bridge) events(c *IPC) {
 			b.mu.Unlock()
 			continue
 		}
-		if f.Version != 11 {
+		if f.Version != 11 && f.Version != 13 {
 			s.Connected = false
 			s.Owner = ""
-			s.Error = "unsupported desktop state protocol"
+			s.Revision = nil
+			s.Error = fmt.Sprintf("unsupported desktop state protocol %d (supported: 11, 13); update the CXPalm gateway", f.Version)
 			b.emitLocked(s)
 			b.mu.Unlock()
 			continue
