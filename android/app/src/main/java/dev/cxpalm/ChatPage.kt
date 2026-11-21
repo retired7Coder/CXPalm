@@ -241,7 +241,7 @@ fun sessionDate(session: JSONObject): String {
             }
         }
         if(state.threadArchived) NoticeCard(tr("已归档 · 只读历史"),tr("这里可以查看归档正文。请在官方桌面取消归档后继续对话。")) {}
-        else if (state.connected && !state.desktopConnected) NoticeCard(tr("等待官方桌面"), tr("请保持电脑上的 Codex 原会话可用。此处不会另开执行器续跑主会话。")) {
+        else if (state.connected && !state.desktopConnected) NoticeCard(tr("等待官方桌面"), tr(desktopConnectionIssue(state))) {
             TextButton(onClick = { state.thread?.let(client::subscribe) }) { Text(tr("重新订阅")) }
         }
     }

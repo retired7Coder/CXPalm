@@ -4,6 +4,31 @@ Public verification records exclude real conversation content, device identifier
 private deployment paths, credentials and raw logs. Tests use synthetic data unless
 explicitly described as deployment connectivity or public-byte checks.
 
+## 0.0.12 / build14
+
+- The local official Windows desktop was explicitly authorized to return from
+  signed version 26.1117.3838.0 to signed version 26.1111.2228.0. CXPalm does not
+  distribute that installer or perform an automatic official-desktop downgrade.
+- Isolated authenticated Web and Android protocol clients each submitted one
+  short message to a newly created verification chat. The real original official
+  desktop owner confirmed each operation and returned a completed reply. The
+  owner remained the same and neither input was duplicated. This is protocol
+  acceptance against the real desktop, not physical Android-device acceptance.
+- Published gateway supports previously verified state protocols 11 and 13.
+  Missing communication interfaces now produce actionable retry and send-block
+  reasons in the gateway and Android UI. Drafts and uncertain operation receipts
+  remain intact; connected owner state is never replaced by a late failed retry.
+- Full Go tests and vet, Windows amd64/macOS amd64/arm64 builds, 104 Node tests,
+  and isolated Chromium desktop/mobile UI checks passed.
+- Android: 95 passing unit tests and one publication-only check initially
+  skipped; APK build succeeded; lint has zero errors and 14 warnings. APK package
+  and development signer remain unchanged; test/render-probe code is excluded.
+- Packages contain no private configuration or runtime state. Windows installer
+  and macOS gateway binaries remain unsigned. Physical Android and macOS runtime
+  acceptance have not been performed.
+- Official desktop 26.1117.3838.0 remains incompatible with the legacy owner
+  interface. Updating CXPalm alone does not restore sending on that desktop.
+
 ## 0.0.11 / build13
 
 - Web and Android reuse image/document bodies only after an authenticated read

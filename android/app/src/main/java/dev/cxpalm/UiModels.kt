@@ -29,6 +29,10 @@ internal fun conversationConnectionLabel(state: ViewState): String = tr(when {
 })
 internal fun currentConnectionLabel(state: ViewState): String = gatewayConnectionLabel(state) +
     if(state.thread != null) " · " + conversationConnectionLabel(state) else ""
+internal fun desktopConnectionIssue(state: ViewState): String =
+    state.status.trim().takeIf { state.connected && !state.desktopConnected &&
+        it.isNotBlank() && it !in setOf("Connected", "Desktop connected", "Waiting for desktop") }
+        ?: "请保持电脑上的 Codex 原会话可用。此处不会另开执行器续跑主会话。"
 internal fun nativeSyncLabel(timestamp: Long): String = if(timestamp > 0)
     tr("最近原桌面同步：{0}",java.text.SimpleDateFormat("MM-dd HH:mm:ss",Locale.getDefault()).format(java.util.Date(timestamp)))
     else tr("原桌面同步时间未知")

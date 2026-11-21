@@ -359,7 +359,7 @@ class BridgeClient(context: Context) {
         historyAttempt="";historyCall=null
         mutable.value.current?.let { store.put("thread:${it.id}", thread) }
         update { it.copy(lastNativeSyncAt=if(changed) 0 else it.lastNativeSyncAt,historyPage=if(reconnecting) it.historyPage else null, historyIndex=if(reconnecting) it.historyIndex else null, historyLoading=false, historyTarget=null, sendUserBefore=null, thread = thread, threadArchived = it.sessions.firstOrNull { row -> row.optString("id")==thread }?.optBoolean("archived") ?: false, sequence = if (changed) -1 else it.sequence, readToken = if (changed) "" else it.readToken, snapshot = if (changed) null else it.snapshot,cached=changed || it.cached,
-            desktopConnected = if (changed) false else it.desktopConnected,
+            desktopConnected = if (changed) false else it.desktopConnected, status = if(changed && it.connected) "Connected" else it.status,
             catalog = if (changed) null else it.catalog, skills = savedSkills(it.current?.id, thread)) }
         if(changed) restoreCached()
         if(!mutable.value.connected)return
@@ -542,7 +542,10 @@ class BridgeClient(context: Context) {
     }
     private fun mutation(method: String, fields: JSONObject, after: (JSONObject) -> Unit = {}) {
         val s = mutable.value; val c = s.current ?: return
-        if (!s.connected || (!method.startsWith("sessions.") && (!s.desktopConnected || s.snapshot == null || s.threadArchived || s.cached))) { reportError("请先连接一台电脑"); return }
+        if (!s.connected) { reportError("请先连接一台电脑"); return }
+        if (!method.startsWith("sessions.") && (!s.desktopConnected || s.snapshot == null || s.threadArchived || s.cached)) {
+            reportError(if(!s.desktopConnected) desktopConnectionIssue(s) else "当前会话为只读，请等待官方桌面同步后重试。"); return
+        }
         if (s.pendingFor(fields.optString("thread").ifBlank { null }) != null) return
         val id = UUID.randomUUID().toString()
         val operation=JSONObject().put("id",id).put("method",method).put("thread",fields.optString("thread")).put("status","dispatched")

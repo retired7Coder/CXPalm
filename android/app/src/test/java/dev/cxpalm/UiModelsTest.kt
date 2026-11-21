@@ -5,6 +5,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UiModelsTest {
+    @Test fun desktopConnectionFailureIsVisibleWithoutTreatingTheGatewayAsDisconnected() {
+        val reason="无法连接官方桌面通信接口，请检查桌面升级后的兼容性。"
+        val state=ViewState(connected=true,desktopConnected=false,status=reason)
+        assertEquals(reason,desktopConnectionIssue(state))
+        assertFalse(desktopConnectionIssue(state.copy(desktopConnected=true)).contains("兼容性"))
+        assertFalse(desktopConnectionIssue(state.copy(connected=false)).contains("兼容性"))
+        assertFalse(desktopConnectionIssue(state.copy(status="Connected")).contains("Connected"))
+    }
+
     @Test fun staleComposerCannotTargetANewComputerOrChatAndGuidanceQuestionsStayDistinct() {
         val computer=Computer("one","One","https://one.example.test","fixture")
         val source=ViewState(current=computer,thread="chat")

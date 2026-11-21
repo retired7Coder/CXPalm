@@ -5,10 +5,41 @@ import (
 	"cxpalm/internal/config"
 	"database/sql"
 	"net"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestFollowFailureExplainsMissingInterfaceAndNeverGrantsWriteAuthority(t *testing.T) {
+	b := NewBridge(config.Config{})
+	defer b.Close()
+	b.sessions["chat"] = &State{ID: "chat"}
+	updates := make(chan State, 4)
+	b.watchers["chat"] = map[chan State]bool{updates: true}
+	b.recordFollowFailure("chat", &os.PathError{Op: "open", Path: "private-fixture-path", Err: os.ErrNotExist})
+	state := <-updates
+	if state.Connected || state.Owner != "" || !strings.Contains(state.Error, "兼容性") || strings.Contains(state.Error, "private-fixture-path") {
+		t.Fatal("missing interface was hidden, leaked a path, or granted authority", state.Error)
+	}
+	if _, err := b.nativeSnapshot("chat"); err == nil || err.Error() != state.Error {
+		t.Fatal("send did not retain the actual connection reason", err)
+	}
+	b.recordFollowFailure("chat", os.ErrNotExist)
+	select {
+	case <-updates:
+		t.Fatal("identical retry flooded state updates")
+	default:
+	}
+	b.sessions["chat"].Connected = true
+	b.sessions["chat"].Owner = "official-owner"
+	b.sessions["chat"].Error = ""
+	b.recordFollowFailure("chat", os.ErrNotExist)
+	if b.sessions["chat"].Error != "" {
+		t.Fatal("late failure replaced a recovered owner state")
+	}
+}
 
 func TestRecoveryOnlyFollowsDisconnectedWatchedChats(t *testing.T) {
 	a, z := net.Pipe()

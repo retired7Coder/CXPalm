@@ -1,7 +1,7 @@
 {
   "name": "cxpalm-desktop",
   "productName": "CXPalm",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "private": true,
   "description": "CXPalm local desktop control center",
   "author": "CXPalm",
@@ -78,8 +78,8 @@
       "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
-      "artifactName": "CXPalm-Setup-0.0.11-build13-${arch}.${ext}"
+      "artifactName": "CXPalm-Setup-0.0.12-build14-${arch}.${ext}"
     }
   },
-  "releaseBuild": 13
+  "releaseBuild": 14
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -356,13 +357,27 @@ func (b *Bridge) followAsync(id string) {
 			err = c.Follow(ctx, id, "")
 		}
 		b.mu.Lock()
-		defer b.mu.Unlock()
 		delete(b.following, id)
-		if err != nil && s != nil && !s.Connected && !s.Archived && len(b.watchers[id]) > 0 && b.ctx.Err() == nil {
-			s.Error = "waiting for official desktop; reconnecting automatically"
-			b.emitLocked(s)
-		}
+		b.mu.Unlock()
+		b.recordFollowFailure(id, err)
 	}()
+}
+
+func (b *Bridge) recordFollowFailure(id string, err error) {
+	if err == nil || b.ctx.Err() != nil {
+		return
+	}
+	message := "官方桌面连接失败，正在重试；请检查电脑上的 Codex。草稿已保留。"
+	if errors.Is(err, os.ErrNotExist) {
+		message = "无法连接官方桌面通信接口。若电脑上的 Codex 已打开，请检查桌面升级后的兼容性。草稿已保留，历史仍可查看。"
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s := b.sessions[id]
+	if s != nil && !s.Connected && !s.Archived && len(b.watchers[id]) > 0 && s.Error != message {
+		s.Error = message
+		b.emitLocked(s)
+	}
 }
 
 // Revalidate silent live subscriptions as well as disconnected ones. Only native
@@ -411,12 +426,13 @@ func (b *Bridge) recoverStreams() {
 		ctx, cancel := context.WithTimeout(b.ctx, time.Second)
 		c, err := b.connect(ctx)
 		if err == nil {
-			_ = c.Follow(ctx, f.id, f.owner)
+			err = c.Follow(ctx, f.id, f.owner)
 		}
 		cancel()
 		b.mu.Lock()
 		delete(b.following, f.id)
 		b.mu.Unlock()
+		b.recordFollowFailure(f.id, err)
 	}
 }
 
@@ -432,6 +448,9 @@ func (b *Bridge) nativeSnapshot(id string) (State, error) {
 	defer b.mu.Unlock()
 	state := b.sessions[id]
 	if state == nil || state.removed || state.Archived || !state.Connected || state.Owner == "" {
+		if state != nil && !state.removed && !state.Archived && state.Error != "" {
+			return State{}, errors.New(state.Error)
+		}
 		return State{}, errors.New("desktop owner not connected; open the chat in official Codex and reconnect")
 	}
 	return *state, nil
