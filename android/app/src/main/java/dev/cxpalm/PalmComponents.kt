@@ -80,10 +80,10 @@ import io.github.u702165405.cxpalm.R
     }
 }
 
-@Composable fun MessageCard(message: Message, loadBody: suspend (Message)->Message, loadImage: suspend (Message,MessageImage)->ByteArray, loadFile: suspend (Message,MessageFile)->ByteArray = {_,_ -> error("File download unavailable")}) {
+@Composable fun MessageCard(message: Message, loadBody: suspend (Message)->Message, loadImage: suspend (Message,MessageImage)->ByteArray, loadFile: suspend (Message,MessageFile)->ByteArray = {_,_ -> error("File download unavailable")}, initiallyExpanded: Boolean = false) {
     val you = message.role == "You"
     val problem = message.role == "sessionError"
-    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+    var expanded by rememberSaveable(message.id) { mutableStateOf(initiallyExpanded) }
     var detail by remember(message.id) { mutableStateOf<Message?>(null) }
     var loading by remember(message.id) { mutableStateOf(false) }
     var failed by remember(message.id) { mutableStateOf(false) }
@@ -99,14 +99,14 @@ import io.github.u702165405.cxpalm.R
     }
     val content=if(message.deferred) detail else message
     val label = when (message.role) {
-        "You" -> tr("你"); "Codex" -> "CODEX"; "commandExecution" -> tr("命令")
-        "reasoning" -> tr("思考摘要"); "fileChange" -> tr("文件变更"); "sessionError" -> tr("本轮提示"); else -> tr("工具详情")
+        "You" -> tr("你"); "Codex" -> if(message.phase=="commentary") tr("进度说明") else "CODEX"
+        "sessionError" -> tr("本轮提示"); else -> processLabel(message.role)
     }
     val status = when (message.status) {
         "inProgress" -> tr("进行中"); "completed" -> tr("已完成"); "failed" -> tr("失败"); "declined" -> tr("已拒绝"); else -> ""
     }
     val expansion = if (expanded) tr("已展开") else tr("已折叠")
-    // User text is a right-aligned bubble; replies read on the page; tool rows are outlined and quiet.
+    // 用户消息靠右，回答直接排版，工具详情按需展开。
     Box(Modifier.fillMaxWidth(), contentAlignment = if (you) Alignment.CenterEnd else Alignment.CenterStart) {
     Surface(modifier = if (you) Modifier.fillMaxWidth(0.88f).wrapContentWidth(Alignment.End) else Modifier.fillMaxWidth(),
         color = when { problem -> MaterialTheme.colorScheme.errorContainer; you -> MaterialTheme.colorScheme.primaryContainer; message.collapsible -> MaterialTheme.colorScheme.surface; else -> Color.Transparent },
@@ -121,7 +121,7 @@ import io.github.u702165405.cxpalm.R
                     Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, modifier = Modifier.size(18.dp).rotate(if (expanded) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(label, style = MaterialTheme.typography.labelMedium)
                     if (message.command.isNotBlank()) Text(message.command.replace(Regex("\\s+"), " ").trim(), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else Spacer(Modifier.weight(1f))
+                    else Text(message.preview.ifBlank {message.text}.replace(Regex("\\s+")," ").trim(), Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if (status.isNotBlank()) Surface(shape = CircleShape, color = if (message.status == "failed") MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant) {
                         Text(status, Modifier.padding(horizontal = 8.dp, vertical = 1.dp), style = MaterialTheme.typography.bodySmall, color = if (message.status == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -140,6 +140,8 @@ import io.github.u702165405.cxpalm.R
                     if(loading) Text(tr("正在读取…"),style=MaterialTheme.typography.bodySmall)
                     if(failed) TextButton(onClick={retry++}) {Text(tr("读取失败，点击重试"))}
                     else if(message.deferred) TextButton(onClick={retry++},enabled=!loading) {Text(tr("刷新输出"))}
+                    val metadata=listOfNotNull(message.cwd.takeIf {it.isNotBlank()},message.exitCode?.let {"${tr("退出码")} $it"},message.durationMs?.let {durationText(it,AppLanguage.code=="en")})
+                    if(metadata.isNotEmpty()) Text(metadata.joinToString(" · "),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if (message.collapsible && message.role != "reasoning") {
                         Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (!content?.command.isNullOrBlank() && content?.command != content?.text) CodeText(content!!.command)
@@ -154,6 +156,36 @@ import io.github.u702165405.cxpalm.R
             }
         }
     }
+    }
+}
+
+@Composable fun ProcessGroupCard(message: Message, loadBody: suspend (Message)->Message, loadImage: suspend (Message,MessageImage)->ByteArray, loadFile: suspend (Message,MessageFile)->ByteArray) {
+    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+    val last=message.items.lastOrNull()
+    Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.surface,
+        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)) {
+        Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().semantics {stateDescription=tr(if(expanded) "已展开" else "已折叠")}
+                .clickable(role=Role.Button) {expanded=!expanded}.heightIn(min=48.dp).padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Icon(painterResource(R.drawable.ic_chevron_right),null,Modifier.size(18.dp).rotate(if(expanded) 90f else 0f))
+                    Text(tr(if(message.status=="inProgress") "正在处理" else "执行过程"),style=MaterialTheme.typography.labelLarge)
+                    Text("${message.items.size} ${tr("项")}",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(message.status=="failed") Text(tr("有操作失败"),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.error)
+                }
+                Text(processCounts(message.items),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(last!=null) Text(last.command.ifBlank {last.preview.ifBlank {last.text}},maxLines=1,overflow=TextOverflow.Ellipsis,
+                    style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if(expanded) {
+                HorizontalDivider()
+                Column(Modifier.padding(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    message.items.forEach { item -> key(item.id) {
+                        MessageCard(item,loadBody,loadImage,loadFile,initiallyExpanded=item.role=="reasoning")
+                    } }
+                }
+            }
+        }
     }
 }
 

@@ -10,7 +10,7 @@ fun normalizeOrigin(value: String): String {
     return u.toString().removeSuffix("/")
 }
 @androidx.compose.runtime.Immutable
-data class Message(val id: String, val role: String, val text: String, val truncated: Boolean = false, val turn: String = "", val command: String = "", val status: String = "", val deferred: Boolean = false, val bodyRevision: String = "", val images: List<MessageImage> = emptyList(), val files: List<MessageFile> = emptyList()) {
+data class Message(val id: String, val role: String, val text: String, val truncated: Boolean = false, val turn: String = "", val command: String = "", val status: String = "", val deferred: Boolean = false, val bodyRevision: String = "", val images: List<MessageImage> = emptyList(), val files: List<MessageFile> = emptyList(), val phase: String = "", val turnStatus: String = "", val preview: String = "", val cwd: String = "", val exitCode: Int? = null, val durationMs: Long? = null, val items: List<Message> = emptyList()) {
     val collapsible: Boolean get() = role != "You" && role != "Codex" && role != "sessionError"
 }
 fun objects(a: JSONArray?): List<JSONObject> = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it) }
@@ -41,7 +41,7 @@ private fun parseConversation(snapshot: JSONObject): List<Message> {
         items.mapIndexedNotNull { itemIndex, item ->
             val type = item.optString("type")
             var text = item.optString("text").ifBlank {
-                when (val content = item.opt("content")) {
+                when (val content = if(type == "reasoning") null else item.opt("content")) {
                     is String -> content
                     is JSONArray -> objects(content).mapNotNull { it.optString("text").takeIf(String::isNotBlank) }.joinToString("\n")
                     else -> item.optString("aggregatedOutput").ifBlank { item.optString("command") }
@@ -67,7 +67,10 @@ private fun parseConversation(snapshot: JSONObject): List<Message> {
             val images=objects(item.optJSONArray("images")).mapNotNull {image -> image.optString("id").takeIf {it.matches(Regex("[a-f0-9]{64}"))}?.let {MessageImage(it,image.optString("name"))}}
             val files=objects(item.optJSONArray("files")).mapNotNull {file -> file.optString("id").takeIf {it.matches(Regex("[a-f0-9]{64}"))}?.let {MessageFile(it,file.optString("name"),file.optString("kind"))}}
             if (text.isBlank() && !item.optBoolean("deferred") && images.isEmpty() && files.isEmpty()) null else Message("$turnId:$itemId", if (type == "userMessage") "You" else if (type in listOf("agentMessage","imageGenerationCall","imageGeneration")) "Codex" else type,
-                text, item.optBoolean("truncated"), turnId, item.optString("command"), item.optString("status"),item.optBoolean("deferred"),item.optString("bodyRevision"),images,files)
+                text, item.optBoolean("truncated"), turnId, item.optString("command"), item.optString("status"),item.optBoolean("deferred"),item.optString("bodyRevision"),images,files,
+                phase=item.optString("phase"),turnStatus=turn.optString("status"),preview=item.optString("preview"),cwd=item.optString("cwd"),
+                exitCode=if(item.opt("exitCode") is Number) item.getInt("exitCode") else null,
+                durationMs=if(item.opt("durationMs") is Number) item.getLong("durationMs") else null)
         }
     }
 }

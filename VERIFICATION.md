@@ -4,6 +4,28 @@ Public verification records exclude real conversation content, device identifier
 private deployment paths, credentials and raw logs. Tests use synthetic data unless
 explicitly described as deployment connectivity or public-byte checks.
 
+## 0.0.13 / build15
+
+- Web and Android group progress messages, public reasoning summaries and tool
+  activity into a collapsible panel, keeping final replies and user steering in
+  chronological order. Command output remains lazy; expansion survives stream
+  updates. Collapsed progress cannot acknowledge an unseen final reply.
+- The gateway retains displayable file diffs, search queries, MCP text results,
+  review summaries, and available command directory/exit-code/duration fields.
+  Raw reasoning content, encrypted content, tool arguments and tool metadata are
+  not forwarded by this projection.
+- Full Go tests/vet, Windows amd64 and macOS amd64/arm64 builds, and 105 Node
+  checks pass. Isolated Chromium checks cover grouping, deferred reads, stream
+  stability, read visibility, historical navigation, desktop/mobile and themes.
+- A passive subscription to the real original desktop verified structured event
+  projection using counts and field shapes only. It sent no chat message and
+  started no second executor.
+- Android clean build and lint pass: 96 unit tests pass; one publication-only
+  check awaits the release. Lint has zero errors and ten warnings. APK identity
+  and signer are unchanged; test/render-probe code is excluded.
+- Physical Android and macOS runtime acceptance have not been performed. The
+  compatible official desktop and its disabled-update configuration are retained.
+
 ## 0.0.12 / build14
 
 - The local official Windows desktop was explicitly authorized to return from

@@ -61,7 +61,7 @@ func projectState(s State, lazy bool) State {
 			if value, ok := item["text"].(string); ok {
 				text = value
 			}
-			if text == "" {
+			if text == "" && kind != "reasoning" {
 				switch content := item["content"].(type) {
 				case string:
 					text = content
@@ -78,7 +78,7 @@ func projectState(s State, lazy bool) State {
 					}
 				}
 			}
-			// Only the desktop's displayable reasoning summary is forwarded.
+			// 只转发官方桌面公开的思考摘要，不读取内部推理内容。
 			if kind == "reasoning" {
 				if summary := summaryText(item["summary"]); summary != "" {
 					text = summary
@@ -91,6 +91,7 @@ func projectState(s State, lazy bool) State {
 			if text == "" {
 				text = command
 			}
+			text, command = processDisplay(item, text, command)
 			images := imageReferences(item)
 			files := fileReferences(item)
 			if kind == "error" || kind == "sessionError" {
@@ -120,6 +121,14 @@ func projectState(s State, lazy bool) State {
 				continue
 			}
 			message := map[string]any{"id": id, "type": kind, "text": text, "truncated": false, "status": item["status"], "command": command}
+			for _, key := range []string{"phase", "cwd", "exitCode", "durationMs"} {
+				if value := item[key]; value != nil {
+					message[key] = value
+				}
+			}
+			if kind != "userMessage" && kind != "agentMessage" {
+				message["preview"] = processPreview(item, text, command)
+			}
 			if len(images) > 0 {
 				message["images"] = images
 			}

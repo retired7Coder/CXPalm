@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {SnapshotStream,Bridge, conversation, approvalDecisions, contextUsage, StateSequence, mergeSessionReadState, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, MediaCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {SnapshotStream,Bridge, conversation, conversationRows, processCounts, approvalDecisions, contextUsage, StateSequence, mergeSessionReadState, NotificationInbox, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, extendHistory, mergeHistoryTurns, sessionIndicator, effortLabel, ReadingCache, MediaCache, offlineReading, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
 
 test('confirmed chat reads update the list and cannot be undone by an older list page',()=>{
   const old={id:'chat',live:true,sequence:10,unread:true,readToken:'reply'};
@@ -557,6 +557,28 @@ test('process projection preserves visible summaries, command/output and turn-qu
   assert.equal(messages[2].collapsible,false); assert.equal(messages[3].text,'pwd');
   assert.notEqual(messages[0].turn,messages[3].turn);
   assert(!JSON.stringify(messages).includes('SECRET'));
+});
+
+test('process groups preserve chronology, user steering, final replies and private reasoning boundaries',()=>{
+  const parsed=conversation([{turnId:'one',status:'completed',items:[
+    {id:'q',type:'userMessage',text:'Question'},
+    {id:'p',type:'agentMessage',phase:'commentary',text:'Checking'},
+    {id:'r',type:'reasoning',summary:['Visible'],content:[{text:'PRIVATE_REASONING'}]},
+    {id:'c',type:'commandExecution',command:'git status',deferred:true,bodyRevision:'v1'},
+    {id:'steer',type:'userMessage',text:'Correction'},
+    {id:'f',type:'fileChange',deferred:true,preview:'main.go',status:'failed'},
+    {id:'a',type:'agentMessage',phase:'final_answer',text:'Answer'},
+    {id:'hidden',type:'reasoning',content:[{text:'PRIVATE_REASONING'}]},
+  ]},{turnId:'two',status:'inProgress',items:[{id:'p',type:'agentMessage',phase:'commentary',text:'Still working'}]}]);
+  const rows=conversationRows(parsed);
+  assert.deepEqual(rows.map(row=>row.role),['你','processGroup','你','processGroup','Codex','processGroup']);
+  assert.deepEqual(rows[1].items.map(item=>item.id),['p','r','c']);
+  assert.equal(rows[3].status,'failed');assert.equal(rows[5].status,'inProgress');
+  assert.equal(rows[5].turn,'two');assert.notEqual(rows[1].turn,rows[5].turn);
+  assert.match(processCounts(rows[1].items),/思考摘要 1/);assert.match(processCounts(rows[1].items),/执行命令 1/);
+  assert(!JSON.stringify(rows).includes('PRIVATE_REASONING'));
+  const revised=conversationRows(parsed.map(item=>item.id==='c'?{...item,bodyRevision:'v2'}:item));
+  assert.equal(revised[1].id,rows[1].id);
 });
 
 test('question navigator follows long replies and respects the loaded historical page', () => {

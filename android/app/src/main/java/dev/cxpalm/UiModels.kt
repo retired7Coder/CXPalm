@@ -213,10 +213,37 @@ internal fun shouldFollowStream(following: Boolean, latest: Boolean, dragging: B
 internal data class RenderedConversation(val messages: List<Message>, val timings: Map<String,TurnTiming>, val footers: Set<Int>, val sourceSnapshot: JSONObject?=null, val sourcePage: JSONObject?=null)
 internal fun renderConversationData(page: JSONObject?, snapshot: JSONObject?): RenderedConversation {
     val display=historyDisplay(page,snapshot)
-    val messages=display?.let(::conversationMessages).orEmpty()
+    val messages=conversationRows(display?.let(::conversationMessages).orEmpty())
     val timings=objects(display?.optJSONArray("turns")).associate { it.optString("turnId").ifBlank { it.optString("id") } to turnTiming(it) }
     return RenderedConversation(messages,timings,timingFooterIndices(messages),snapshot,page)
 }
+
+internal fun conversationRows(messages: List<Message>): List<Message> {
+    val rows=mutableListOf<Message>()
+    val pending=mutableListOf<Message>()
+    fun flush() {
+        if(pending.isEmpty())return
+        val items=pending.toList()
+        rows+=Message("process:${items.first().id}","processGroup","",turn=items.first().turn,
+            status=if(items.first().turnStatus=="inProgress") "inProgress" else if(items.any {it.status=="failed"}) "failed" else "completed",items=items)
+        pending.clear()
+    }
+    messages.forEach { message ->
+        if(pending.isNotEmpty() && pending.first().turn!=message.turn)flush()
+        if(message.collapsible || message.phase=="commentary")pending+=message
+        else {flush();rows+=message}
+    }
+    flush()
+    return rows
+}
+
+internal fun processLabel(role: String): String = tr(when(role) {
+    "reasoning" -> "思考摘要"; "commandExecution" -> "执行命令"; "fileChange" -> "文件变更"
+    "webSearch" -> "网页搜索"; "mcpToolCall" -> "工具调用"; "automaticApprovalReview" -> "审批检查"
+    "contextCompaction" -> "上下文压缩"; "modelChanged" -> "模型切换"; "Codex" -> "进度说明"; else -> "工具详情"
+})
+internal fun processCounts(items: List<Message>): String =
+    items.groupingBy { processLabel(it.role) }.eachCount().entries.joinToString(" · ") {"${it.key} ${it.value}"}
 
 internal fun detailRefreshKey(message: Message): String = if(message.deferred && message.status=="inProgress") "" else message.bodyRevision
 

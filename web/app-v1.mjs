@@ -1,5 +1,5 @@
 import {markdown} from './markdown-v1.mjs';
-import {seedHistoryIndex, Bridge, conversation, approvalDecisions, contextUsage, NotificationInbox, StateSequence, mergeSessionReadState, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, MediaCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
+import {seedHistoryIndex, Bridge, conversation, conversationRows, processLabel, processCounts, approvalDecisions, contextUsage, NotificationInbox, StateSequence, mergeSessionReadState, sessionSettings, changedSettings, newChatDefaults, turnElapsed, sessionElapsed, activeQuestionIndex, computerAddress, mergeHistoryTurns, extendHistory, sessionIndicator, effortLabel, ReadingCache, MediaCache, connectionPresentation, operationLabel, AttachmentUploads, activeTurnId} from './protocol-v1.mjs';
 
 const $ = id => document.getElementById(id);
 const state = {page:'chat',device:null,version:'',sessions:[],projects:[],archived:false,project:'',listLimit:100,listSubscription:null,hasMore:false,settingsBase:null,editGroup:null,selected:null,snapshot:null,desktop:false,reconnect:null,openTools:new Set(),catalog:{models:[],skills:[]},skills:new Set()};
@@ -414,8 +414,10 @@ function syncClearedDraft() {
 function markVisibleRead() {
   const container=$('messages');
   if(state.cached || (state.historyPage?.hasMore) || !readSyncSupported || state.snapshot?.readSyncAvailable===false || !bridge.connected || !state.desktop || !state.selected || !state.snapshot || state.page!=='chat' || document.visibilityState!=='visible' || $('shell').classList.contains('list-open'))return;
-  const latest=[...container.querySelectorAll('.message[data-role="Codex"]')].at(-1);
+  const latest=[...container.querySelectorAll(':scope > .message[data-role="Codex"]')].at(-1);
   if(!latest)return;
+  const latestTurn=state.snapshot.turns?.at(-1);
+  if(latest.dataset.turn!==(latestTurn?.turnId||latestTurn?.id))return;
   const viewport=container.getBoundingClientRect(),reply=latest.getBoundingClientRect();
   if(reply.bottom>viewport.bottom+8||reply.top>viewport.bottom)return;
   if(state.snapshot.hasUnreadTurn!==true || !/^[a-f0-9]{64}$/.test(readToken||''))return;
@@ -569,7 +571,7 @@ window.addEventListener('online',()=>bridge.checkConnection());
 const processBodies=new Map(),processRequests=new Map();
 function renderProcessBody(details,message){
   const body=details.querySelector('.process-body');
-  if(!details.open){body.replaceChildren();delete body.dataset.revision;return;}
+  if(!details.open||details.closest('.process-group')?.open===false){body.replaceChildren();delete body.dataset.revision;return;}
   const thread=state.selected?.id,key=`${bridge.device?.id}:${thread}:${message.turn}:${message.id}`;
   const cached=processBodies.get(key);
   if(message.deferred&&cached?.bodyRevision!==message.bodyRevision&&!(cached&&message.status==='inProgress')){
@@ -591,9 +593,11 @@ function renderProcessBody(details,message){
     }else if(!bridge.connected&&!body.childNodes.length)body.append(text('p','离线缓存 · 连接后读取完整详情','muted'));
     return;
   }
-  const value=message.deferred?cached:message,revision=value.bodyRevision||JSON.stringify([value.text,value.command]);
+  const value=message.deferred?cached:message,revision=(value.bodyRevision||JSON.stringify([value.text,value.command]))+JSON.stringify([message.cwd,message.exitCode,message.durationMs]);
   if(body.dataset.revision===revision)return;
   body.dataset.revision=revision;body.replaceChildren();
+  const meta=[message.cwd,Number.isInteger(message.exitCode)?`退出码 ${message.exitCode}`:'',Number.isFinite(message.durationMs)?`${(message.durationMs/1000).toFixed(1)} 秒`:''].filter(Boolean);
+  if(meta.length)body.append(text('p',meta.join(' · '),'process-meta'));
   if(message.role==='reasoning')markdown(body,value.text);
   else {
     if(value.command&&value.command!==value.text){const command=text('pre',value.command);command.tabIndex=0;body.append(command);}
@@ -603,6 +607,82 @@ function renderProcessBody(details,message){
     const refresh=text('button','刷新输出','quiet');refresh.type='button';
     refresh.onclick=()=>{const current=messageNodes.get(details.dataset.messageKey)?.message;if(!current)return;processBodies.delete(key);body.replaceChildren();delete body.dataset.revision;renderProcessBody(details,current);};body.append(refresh);
   }
+}
+
+function renderProcessGroup(message,index){
+  const key=`${state.selected?.id}:${message.turn}:${message.id}:processGroup`;
+  const old=messageNodes.get(key),card=old?.node||text('article','','message activity process-group-card');
+  card.dataset.turn=message.turn;card.dataset.role='processGroup';card.dataset.item=message.id;
+  let details=card.querySelector('.process-group');
+  if(!details){
+    details=document.createElement('details');details.className='process-group';details.open=state.openTools.has(key);
+    details.append(document.createElement('summary'),text('div','','process-group-body'));
+    details.addEventListener('toggle',()=>{
+      if(!details.isConnected)return;
+      if(details.open)state.openTools.add(key);else state.openTools.delete(key);
+      for(const child of details.querySelectorAll('.process-details')){
+        const current=messageNodes.get(child.dataset.messageKey)?.message;
+        if(current)renderProcessBody(child,current);
+      }
+      if(details.open)for(const child of details.querySelectorAll('.process-details[data-reasoning]'))child.open=true;
+    });
+    card.append(details);
+  }
+  const last=message.items.at(-1),summary=details.querySelector(':scope > summary');
+  summary.replaceChildren(text('span',message.status==='inProgress'?'◌':'✓','process-group-icon'),
+    text('span',message.status==='inProgress'?'正在处理':'执行过程','process-label'),
+    text('span',`${message.items.length} 项`,'process-group-count'),
+    text('span',message.status==='failed'?'有操作失败':processCounts(message.items),'process-group-counts'),
+    text('span',last.command||last.preview||last.text||processLabel(last.role),'process-group-preview'));
+  details.dataset.status=message.status;
+  const body=details.querySelector('.process-group-body');
+  const children=message.items.map((item,i)=>renderMessageCard(item,index+i));
+  const wanted=new Set(children);
+  for(const node of [...body.children])if(!wanted.has(node))node.remove();
+  children.forEach((node,i)=>{if(body.children[i]!==node)body.insertBefore(node,body.children[i]||null);});
+  messageNodes.set(key,{message,node:card,used:true});
+  return card;
+}
+
+function renderMessageCard(message,index){
+    if(message.role==='processGroup')return renderProcessGroup(message,index);
+    const key = `${state.selected?.id}:${message.turn}:${message.id || index}:${message.role}`;
+    const old=messageNodes.get(key);
+    if(old?.message===message){old.used=true;return old.node;}
+    const signature=JSON.stringify(message);
+    if(old?.signature===signature){old.used=true;old.node.dataset.turn=message.turn||'';return old.node;}
+    const card = old?.node || document.createElement('article');
+    card.className = `message${message.role === 'sessionError' ? ' session-error' : message.role === '你' ? ' user' : message.collapsible ? ' activity' : ''}`;
+    card.dataset.turn=message.turn||'';card.dataset.item=message.id;card.dataset.role=message.role;
+    if (!message.collapsible) {
+      card.replaceChildren(text('div', message.phase==='commentary'?'进度说明':message.role==='sessionError'?'本轮提示':message.role, 'message-head'));
+      const body = document.createElement('div'); body.className = 'message-body';
+      if(message.role==='sessionError'){body.textContent=message.text;card.setAttribute('role','status');}else markdown(body, message.text);
+      card.append(body);appendImages(body,message);appendFiles(body,message);
+    } else {
+      let details = card.querySelector('details');
+      if (!details) {
+        details = document.createElement('details'); details.className = 'process-details';details.dataset.messageKey=key;
+        if(message.role==='reasoning')details.dataset.reasoning='true';
+        details.open = state.openTools.has(key);
+        details.append(document.createElement('summary'), text('div', '', 'message-body process-body'));
+        details.addEventListener('toggle', () => { if (details.isConnected) {
+          if (details.open) state.openTools.add(key); else state.openTools.delete(key);
+          const current=messageNodes.get(key)?.message;if(current)renderProcessBody(details,current);
+        } });
+        card.append(details);
+      }
+      const summary = details.querySelector('summary');
+      const icon=text('span',message.role==='commandExecution'?'›_':message.role==='reasoning'?'✧':'◇','process-icon');icon.setAttribute('aria-hidden','true');
+      summary.replaceChildren(icon,text('span', processLabel(message.role), 'process-label'));
+      if(message.preview||message.role==='reasoning')summary.append(text('span',(message.preview||message.text).replace(/[#*_`\n]+/g,' ').trim(),'process-preview'));
+      if (message.command) summary.append(text('code', message.command.replace(/\s+/g, ' ').trim(), 'process-command'));
+      const status = ({inProgress:'进行中',completed:'已完成',failed:'失败',declined:'已拒绝'})[message.status];
+      if (status) summary.append(text('span', status, `process-status${message.status === 'failed' ? ' failed' : ''}`));
+      renderProcessBody(details,message);
+    }
+    messageNodes.set(key,{signature,message,node:card,used:true});
+    return card;
 }
 
 function displayedTurns() {
@@ -620,47 +700,9 @@ function renderConversation() {
   const visibleAnchor=[...container.querySelectorAll('.message')].find(n=>n.getBoundingClientRect().bottom>container.getBoundingClientRect().top);
   const visibleOffset=visibleAnchor?.getBoundingClientRect().top;
   const snapshot = state.snapshot;
-  const messages = conversation(displayedTurns());
+  const messages = conversationRows(conversation(displayedTurns()));
   for(const cached of messageNodes.values())cached.used=false;
-  const nodes = messages.map((message, index) => {
-    const key = `${state.selected?.id}:${message.turn}:${message.id || index}:${message.role}`;
-    const old=messageNodes.get(key);
-    if(old?.message===message){old.used=true;return old.node;}
-    const signature=JSON.stringify(message);
-    if(old?.signature===signature){old.used=true;old.node.dataset.turn=message.turn||'';return old.node;}
-    const card = old?.node || document.createElement('article');
-    card.className = `message${message.role === 'sessionError' ? ' session-error' : message.role === '你' ? ' user' : message.collapsible ? ' activity' : ''}`;
-    card.dataset.turn=message.turn||'';card.dataset.item=message.id;card.dataset.role=message.role;
-    if (!message.collapsible) {
-      card.replaceChildren(text('div', message.role==='sessionError'?'本轮提示':message.role, 'message-head'));
-      const body = document.createElement('div'); body.className = 'message-body';
-      if(message.role==='sessionError'){body.textContent=message.text;card.setAttribute('role','status');}else markdown(body, message.text);
-      card.append(body);appendImages(body,message);appendFiles(body,message);
-    } else {
-      let details = card.querySelector('details');
-      if (!details) {
-        details = document.createElement('details'); details.className = 'process-details';details.dataset.messageKey=key;
-        details.open = state.openTools.has(key);
-        details.append(document.createElement('summary'), text('div', '', 'message-body process-body'));
-        details.addEventListener('toggle', () => { if (details.isConnected) {
-          if (details.open) state.openTools.add(key); else state.openTools.delete(key);
-          const current=messageNodes.get(key)?.message;if(current)renderProcessBody(details,current);
-        } });
-        card.append(details);
-      }
-      const label = message.role === 'reasoning' ? '思考摘要' : message.role === 'commandExecution' ? '执行命令' : message.role === 'fileChange' ? '文件变更' : '工具详情';
-      const summary = details.querySelector('summary');
-      const icon=text('span',message.role==='commandExecution'?'›_':message.role==='reasoning'?'✧':'◇','process-icon');icon.setAttribute('aria-hidden','true');
-      summary.replaceChildren(icon,text('span', label, 'process-label'));
-      if(message.role==='reasoning')summary.append(text('span',message.text.replace(/[#*_`\n]+/g,' ').trim(),'process-preview'));
-      if (message.command) summary.append(text('code', message.command.replace(/\s+/g, ' ').trim(), 'process-command'));
-      const status = ({inProgress:'进行中',completed:'已完成',failed:'失败',declined:'已拒绝'})[message.status];
-      if (status) summary.append(text('span', status, `process-status${message.status === 'failed' ? ' failed' : ''}`));
-      renderProcessBody(details,message);
-    }
-    messageNodes.set(key,{signature,message,node:card,used:true});
-    return card;
-  });
+  const nodes = messages.map(renderMessageCard);
   const footerAt = new Map();
   messages.forEach((message,index)=>{
     if(message.role==='Codex' || (message.role!=='你' && messages[footerAt.get(message.turn)]?.role!=='Codex')) footerAt.set(message.turn,index);

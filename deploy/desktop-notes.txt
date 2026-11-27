@@ -1,1 +1,5 @@
-CXPalm 0.0.12 / build14: Include verified desktop state protocols 11 and 13 in the published gateway. Explain desktop communication failures in Web and Android, retain the reason when a send is blocked, and clear stale connection notices on chat changes. Keep drafts, device authorizations, media caches and uncertain operation receipts. Compatibility: official Windows desktop 26.1111.2228.0 provides the required original-owner interface; 26.1117.3838.0 does not expose that legacy interface, so sending/steering on that desktop is currently unavailable. Installing CXPalm alone does not downgrade or modify the official desktop. Never replay uncertain sends. Android package and signer remain unchanged. Windows installers and macOS gateway binaries are unsigned. Cross-builds and protocol checks are not physical Android/macOS acceptance. Native gray-text suggestions remain unavailable; no replacement model request is generated.
+CXPalm 0.0.13 / build15
+
+网页与 Android 将每轮进度说明、公开思考摘要和工具操作合并为可折叠的执行过程，最终回答独立展示。补齐文件变更、网页搜索与工具文本结果；展开后可查看完整命令、输出、工作目录、退出码和执行耗时。保留流式更新时的展开状态和历史定位，正文按需读取。
+
+继续使用已验证兼容的官方桌面 26.1111.2228.0。本次不升级官方桌面或更改其自动更新设置。

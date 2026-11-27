@@ -58,9 +58,11 @@ async function main() {
   const snapshot = () => ({type: 'chat.state', data: {id: 'main-fixture', sequence:++sequence,readToken:replyToken, connected: true,nativeSyncedAtMs, snapshot: {
     readSyncAvailable,officialReadSyncAvailable:readSyncAvailable,notificationPreference,queuedMessages,queueAvailable:true,threadGoal:nativeGoal,goalRevision:'fixture-goal-revision',goalAvailable:true,hasUnreadTurn:desktopReadToken!==replyToken,latestModel:settings.model,latestReasoningEffort:settings.effort,latestCollaborationMode:{mode:settings.mode},latestThreadSettings:{activePermissionProfile:{id:settings.permission==='auto-review'?':workspace':settings.permission},approvalsReviewer:settings.permission==='auto-review'?'auto_review':'user'},controlsRevision:'fixture-revision',latestTokenUsageInfo:{last:{inputTokens:2000},modelContextWindow:10000},threadRuntimeStatus: {type: active ? 'active' : 'idle'}, observedAtMs:Date.now(),turns: [{turnId:'t69',status:active?'inProgress':'completed',turnStartedAtMs,...(active?{}:{durationMs:764351}),items: [
       {id:'user-69',type: 'userMessage', text: '检查这个功能的安全边界。'},
-      {type: 'agentMessage', text: '这是隔离的 UI 测试会话，不是真实模型输出。\n\n```js\nconst safe = true;\n```\n\n<img src=x onerror="window.xss=true">'},
-      {id:'tool-fixture',type:'commandExecution',command:'fixture command --not-executed',status:processRunning?'inProgress':processRevision?'completed':'inProgress',text:'',deferred:true,bodyRevision:'fixture-body-'+processRevision},
+      {id:'progress-fixture',type:'agentMessage',phase:'commentary',text:'正在检查命令与文件改动。'},
+      {id:'tool-fixture',type:'commandExecution',command:'fixture command --not-executed',status:processRunning?'inProgress':processRevision?'completed':'inProgress',cwd:'/fixture',exitCode:!processRunning&&processRevision?0:null,durationMs:!processRunning&&processRevision?1200:null,text:'',deferred:true,bodyRevision:'fixture-body-'+processRevision},
       {id:'reason-fixture',type:'reasoning',summary:[`Visible **reasoning summary** ${processRevision}`, '<img src=x onerror="window.xss=true">']},
+      {id:'change-fixture',type:'fileChange',preview:'src/example.ts',text:'src/example.ts\n\n+const safe = true;',status:'completed'},
+      {type: 'agentMessage',phase:'final_answer', text: '这是隔离的 UI 测试会话，不是真实模型输出。\n\n```js\nconst safe = true;\n```\n\n<img src=x onerror="window.xss=true">'},
       ...(imageFixture?[{id:'returned-image',type:'imageGeneration',text:'',images:[{id:'f'.repeat(64),name:'fixture-returned.png'}]}]:[]),
       ...(fileFixture?[{id:'returned-files',type:'agentMessage',text:'可下载核对表和完整网页清单。',files:[{id:'e'.repeat(64),name:'核对表.xlsx',kind:'xlsx'},{id:'d'.repeat(64),name:'完整清单.html',kind:'html'}]}]:[]),
       ...(guidanceFixture?[
@@ -169,7 +171,7 @@ async function main() {
   });
   const screenshots = path.join(__dirname, '..', '.local', 'web-brand-screenshots');
   await fs.mkdir(screenshots, {recursive:true});
-  async function capture(name){await page.evaluate(()=>Promise.all(document.getAnimations().filter(animation=>animation.effect.getTiming().iterations!==Infinity).map(animation=>animation.finished.catch(()=>{}))));await page.screenshot({path:path.join(screenshots,name)});}
+  async function capture(name){await page.screenshot({path:path.join(screenshots,name),animations:'disabled'});}
   try {
     await page.goto(`${origin}/cxpalm/#pair=${secret}`);
     await page.locator('#login').waitFor({state:'visible'});
@@ -413,6 +415,7 @@ async function main() {
     assert.equal(await page.locator('.process-body pre, .process-body p').count(),0,'collapsed process body was eagerly rendered');
     assert.equal(sent.filter(q=>q.method==='chat.item').length,0,'collapsed process requested a body');
     await page.locator('#messages summary').first().click();
+    await page.locator('.message[data-role=commandExecution] details > summary').first().click();
     await page.getByText('fixture command output - never executed',{exact:true}).waitFor();
     await page.evaluate(()=>window.__firstMessage=document.querySelector('#messages .message'));
     currentSocket.send(JSON.stringify(snapshot()));
@@ -437,11 +440,11 @@ async function main() {
     await page.locator('#messages summary').first().click();
     const commandDetails=page.locator('.message[data-role=commandExecution] details').first();
     const reasoningDetails=page.locator('.message[data-role=reasoning] details').first();
-    assert.equal(await commandDetails.getAttribute('open'),null);
-    assert.equal(await reasoningDetails.getAttribute('open'),null);
+    assert.notEqual(await commandDetails.getAttribute('open'),null);
+    assert.notEqual(await reasoningDetails.getAttribute('open'),null);
     assert.equal(await page.locator('.message[data-role=Codex] details').count(),0);
-    await commandDetails.locator('summary').click();
-    await reasoningDetails.locator('summary').click();
+    await page.locator('.process-group > summary').first().click();
+    assert.equal(await page.locator('.process-group').first().getAttribute('open'),'');
     await page.evaluate(()=>window.__processDetails=document.querySelector('.message[data-role=commandExecution] details'));
     const priorDetailReads=sent.filter(q=>q.method==='chat.item').length;processRunning=true;
     for(let i=1;i<=10;i++){processRevision=i;currentSocket.send(JSON.stringify(snapshot()));}
@@ -450,6 +453,7 @@ async function main() {
     await page.getByText('fixture output revision 10',{exact:true}).waitFor();assert.equal(sent.filter(q=>q.method==='chat.item').length,priorDetailReads+1);
     processRunning=false;processRevision=1;currentSocket.send(JSON.stringify(snapshot()));
     await commandDetails.getByText('fixture output revision 1',{exact:true}).waitFor();
+    assert.match(await commandDetails.locator('.process-meta').textContent(),/退出码 0/);
     assert.equal(await page.evaluate(()=>window.__processDetails===document.querySelector('.message[data-role=commandExecution] details')),true);
     assert.notEqual(await commandDetails.getAttribute('open'),null);
     assert.notEqual(await reasoningDetails.getAttribute('open'),null);
@@ -457,17 +461,22 @@ async function main() {
     assert.equal(await page.locator('#messages img').count(),0);
     assert.equal(await commandDetails.locator('pre').first().textContent(),'fixture command --not-executed');
     await capture('process-expanded-desktop.png');
+    console.log('Process UI: expanded group verified');
     await commandDetails.locator('summary').click();await reasoningDetails.locator('summary').click();
     const duplicate=snapshot();duplicate.data.snapshot.turns.push({turnId:'different-turn',items:[{id:'tool-fixture',type:'commandExecution',command:'other command',text:'other output'}]});
     await commandDetails.locator('summary').click();currentSocket.send(JSON.stringify(duplicate));
-    await page.locator('.message[data-role=commandExecution]').nth(1).waitFor();
+    await page.locator('.message[data-role=commandExecution]').nth(1).waitFor({state:'attached'});
+    console.log('Process UI: repeated item IDs in different turns verified');
     assert.notEqual(await commandDetails.getAttribute('open'),null);
     assert.equal(await page.locator('.message[data-role=commandExecution] details').nth(1).getAttribute('open'),null);
     await commandDetails.locator('summary').click();
     processRevision=2;currentSocket.send(JSON.stringify(snapshot()));
     await page.waitForFunction(()=>document.querySelectorAll('.message[data-role=commandExecution]').length===1);
+    console.log('Process UI: streamed removal verified');
     assert.equal(await commandDetails.getAttribute('open'),null);
     assert.equal(await reasoningDetails.getAttribute('open'),null);
+    await page.locator('.process-group > summary').first().click();
+    assert.equal(await page.locator('.process-group').first().getAttribute('open'),null);
     await capture('process-collapsed-desktop.png');
     await page.setViewportSize({width:320,height:740});await capture('process-collapsed-320.png');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -743,6 +752,14 @@ async function main() {
     assert.equal(await page.locator('#session-list').getByText('已读',{exact:true}).count(),0);
     assert.equal(await page.locator('#session-list').getByText('已完成',{exact:true}).count(),0);
     await capture('sessions-read-colors-desktop.png');
+    replyToken='e'.repeat(64);
+    const onlyProgress=snapshot();
+    onlyProgress.data.snapshot.turns.push({turnId:'only-progress',status:'inProgress',items:[{id:'progress',type:'agentMessage',phase:'commentary',text:'Progress without a final reply'}]});
+    currentSocket.send(JSON.stringify(onlyProgress));
+    await page.locator('.process-group-card[data-turn=only-progress]').waitFor();
+    await page.waitForTimeout(120);
+    assert.equal(desktopReadToken,'a'.repeat(64),'hidden progress acknowledged a reply');
+    replyToken='a'.repeat(64);currentSocket.send(JSON.stringify(snapshot()));
     // Settings and hidden tabs must not acknowledge new replies.
     await page.locator('#nav-settings').click();
     replyToken='b'.repeat(64);
@@ -751,6 +768,7 @@ async function main() {
     await page.waitForFunction(()=>!!document.querySelector('.session-item.is-unread'));
     assert.equal(desktopReadToken,'a'.repeat(64));
     await page.locator('#nav-chat').click();
+    await page.locator('#messages').evaluate(n=>{n.scrollTop=n.scrollHeight;});
     await page.waitForFunction(()=>!document.querySelector('.session-item.is-unread'));
     // Scroll up: a reply is not read until its latest content is visible.
     await page.evaluate(()=>{const n=document.querySelector('#messages');n.style.height='120px';n.style.flex='none';n.scrollTop=0;});
@@ -1162,6 +1180,10 @@ async function main() {
     assert(!sent.some(q=>['files.','terminal.','git.','side.','projects.'].some(prefix=>q.method.startsWith(prefix))));
     console.log('Isolated Chromium UI checks passed: old-fragment clearing and password login, sessions, safe text/code, send/steer/stop/approval, models/effort/permissions/plan, inline non-modal settings, stable message DOM, stale-state rejection, native skill inputs, context, send modes, reload non-replay, desktop/mobile/light/dark.');
     console.log('Screenshots:',screenshots);
-  } catch(error) {await page.screenshot({path:path.join(screenshots,'failure.png')});console.error('UI failure metrics:',await page.evaluate(()=>{const box=node=>node?.getBoundingClientRect().toJSON();return {viewport:[innerWidth,innerHeight,document.documentElement.scrollWidth],overflow:[...document.querySelectorAll('body *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1&&n.getBoundingClientRect().width).slice(0,12).map(n=>[n.tagName,n.id,n.className,n.getBoundingClientRect().right,getComputedStyle(n).overflowX]),messages:box(document.querySelector('#messages')),composer:box(document.querySelector('#composer')),lastReply:box([...document.querySelectorAll('.message[data-role="Codex"]')].at(-1)),scroll:[document.querySelector('#messages')?.scrollTop,document.querySelector('#messages')?.scrollHeight]};}));throw error;} finally { await browser.close(); }
+  } catch(error) {
+    console.error('UI failure:',error);
+    try {await page.screenshot({path:path.join(screenshots,'failure.png'),timeout:5000});}catch{}
+    throw error;
+  } finally { await browser.close(); }
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

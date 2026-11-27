@@ -59,8 +59,8 @@ export function conversation(turns = []) {
         .map(entry => collection.entitiesByKey?.[entry.value]).filter(Boolean));
     const messages=items.map((item, itemIndex) => {
       let text = item.text;
-      if (!text && typeof item.content === 'string') text = item.content;
-      if (!text && Array.isArray(item.content)) text = item.content.map(part => part.text || '').filter(Boolean).join('\n');
+      if (item.type !== 'reasoning' && !text && typeof item.content === 'string') text = item.content;
+      if (item.type !== 'reasoning' && !text && Array.isArray(item.content)) text = item.content.map(part => part.text || '').filter(Boolean).join('\n');
       if (item.type === 'reasoning') {
         const summary = typeof item.summary === 'string' ? item.summary :
           (Array.isArray(item.summary) ? item.summary.map(part => typeof part === 'string' ? part : part?.text || '').filter(Boolean).join('\n') : '');
@@ -68,6 +68,7 @@ export function conversation(turns = []) {
       }
       text ||= item.aggregatedOutput || item.command || '';
       return {id: item.id || `${item.type}:${itemIndex}`, turn: turn.turnId || turn.id || `turn-${turnIndex}`,
+        phase:item.phase||'',turnStatus:turn.status||'',preview:item.preview||'',cwd:item.cwd||'',exitCode:item.exitCode,durationMs:item.durationMs,
         command: typeof item.command === 'string' ? item.command : '', status: item.status,
         images:Array.isArray(item.images)?item.images:[],
         files:Array.isArray(item.files)?item.files:[],
@@ -76,6 +77,32 @@ export function conversation(turns = []) {
     }).filter(item => item.text||item.deferred||item.images.length||item.files.length);
     conversationCache.set(turn,{index:turnIndex,messages});return messages;
   });
+}
+
+export function conversationRows(messages) {
+  const rows=[],pending=[];
+  function flush(){
+    if(!pending.length)return;
+    const items=pending.splice(0);
+    rows.push({id:`process:${items[0].id}`,turn:items[0].turn,role:'processGroup',items,
+      status:items[0].turnStatus==='inProgress'?'inProgress':items.some(item=>item.status==='failed')?'failed':'completed'});
+  }
+  for(const message of messages){
+    if(pending.length&&pending[0].turn!==message.turn)flush();
+    if(message.collapsible||message.phase==='commentary')pending.push(message);
+    else {flush();rows.push(message);}
+  }
+  flush();return rows;
+}
+
+export function processLabel(role) {
+  return ({reasoning:'思考摘要',commandExecution:'执行命令',fileChange:'文件变更',webSearch:'网页搜索',
+    mcpToolCall:'工具调用',automaticApprovalReview:'审批检查',contextCompaction:'上下文压缩',modelChanged:'模型切换',Codex:'进度说明'})[role]||'工具详情';
+}
+export function processCounts(items) {
+  const counts=new Map();
+  for(const item of items){const label=processLabel(item.role);counts.set(label,(counts.get(label)||0)+1);}
+  return [...counts].map(([label,count])=>`${label} ${count}`).join(' · ');
 }
 
 export function approvalDecisions(request) {

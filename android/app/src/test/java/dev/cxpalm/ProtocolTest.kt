@@ -5,6 +5,31 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class ProtocolTest {
+    @Test fun processGroupsKeepSteeringAndFinalAnswersOutsideAndRetainMetadata() {
+        val snapshot=org.json.JSONObject("""{"turns":[{"turnId":"one","status":"inProgress","items":[
+            {"id":"q","type":"userMessage","text":"Question"},
+            {"id":"p","type":"agentMessage","phase":"commentary","text":"Checking"},
+            {"id":"r","type":"reasoning","summary":["Visible"],"content":[{"text":"PRIVATE_REASONING"}]},
+            {"id":"c","type":"commandExecution","command":"git status","deferred":true,"cwd":"D:/project","exitCode":0,"durationMs":123},
+            {"id":"steer","type":"userMessage","text":"Correction"},
+            {"id":"f","type":"fileChange","preview":"main.go","deferred":true},
+            {"id":"a","type":"agentMessage","phase":"final_answer","text":"Answer"},
+            {"id":"hidden","type":"reasoning","content":[{"text":"PRIVATE_REASONING"}]}
+        ]}]}""")
+        val messages=conversationMessages(snapshot)
+        val rows=conversationRows(messages)
+        assertEquals(listOf("You","processGroup","You","processGroup","Codex"),rows.map {it.role})
+        assertEquals(listOf("one:p","one:r","one:c"),rows[1].items.map {it.id})
+        assertEquals("inProgress",rows[1].status)
+        assertEquals("D:/project",rows[1].items.last().cwd)
+        assertEquals(0,rows[1].items.last().exitCode)
+        org.junit.Assert.assertFalse(messages.any {it.text.contains("PRIVATE_REASONING")})
+        val completed=conversationRows(messages.map {it.copy(turnStatus="completed")})
+        assertEquals(rows[1].id,completed[1].id)
+        assertEquals("completed",completed[1].status)
+        assertEquals(2,questionMessageIndex(org.json.JSONObject("""{"turn":"one","item":"steer"}"""),rows))
+        assertEquals(setOf(4),timingFooterIndices(rows))
+    }
     @Test fun outputOnlyMessagesRetainFileIdentity() {
         val file=org.json.JSONObject().put("id","a".repeat(64)).put("name","review.xlsx").put("kind","xlsx")
         val item=org.json.JSONObject().put("id","output").put("type","agentMessage").put("files",org.json.JSONArray().put(file))

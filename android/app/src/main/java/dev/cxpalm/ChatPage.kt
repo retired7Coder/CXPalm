@@ -193,11 +193,12 @@ fun sessionDate(session: JSONObject): String {
     }
     val replyIndex = messages.indexOfLast { it.role == "Codex" }
     val reply = messages.getOrNull(replyIndex)
-    val latestReplyVisible by remember(list, reply, replyIndex, state.historyPage) {
+    val latestReplyVisible by remember(list, reply, replyIndex, state.historyPage, state.snapshot) {
         derivedStateOf {
             val info = list.layoutInfo
             val item = info.visibleItemsInfo.firstOrNull { it.key == "message:${reply?.id}" }
-            atLatest && reply != null && replyBottomReached(replyIndex, list.firstVisibleItemIndex,
+            val latestTurn=objects(state.snapshot?.optJSONArray("turns")).lastOrNull()
+            atLatest && reply != null && reply.turn==latestTurn?.let {it.optString("turnId").ifBlank {it.optString("id")}} && replyBottomReached(replyIndex, list.firstVisibleItemIndex,
                 item?.let { it.offset + it.size }, info.viewportEndOffset)
         }
     }
@@ -365,7 +366,7 @@ fun sessionDate(session: JSONObject): String {
         followLatest=false
         withFrameNanos { }
         if(questionPending!==target)return@LaunchedEffect
-        list.scrollToItem(1+index+footerIndices.count {it<index})
+        list.scrollToItem(1+index)
         positioned=true;lastHistoryTarget=historyTarget;questionPending=null
     }
     val currentState by rememberUpdatedState(state)
@@ -409,7 +410,8 @@ fun sessionDate(session: JSONObject): String {
             }
             itemsIndexed(messages, key = { _, message -> "message:${message.id}" }) { index, message ->
                 Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    MessageCard(message,client::item,{message,image -> client.image(state,message,image)},{message,file -> client.file(state,message,file)})
+                    if(message.role=="processGroup") ProcessGroupCard(message,client::item,{message,image -> client.image(state,message,image)},{message,file -> client.file(state,message,file)})
+                    else MessageCard(message,client::item,{message,image -> client.image(state,message,image)},{message,file -> client.file(state,message,file)})
                     if(index in footerIndices) CompletedTurnTime(timings[message.turn])
                 }
             }

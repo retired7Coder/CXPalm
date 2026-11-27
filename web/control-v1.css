@@ -492,7 +492,7 @@ pre{white-space:pre;overflow:auto;background:var(--surface);border:1px solid var
 .queue-content small { font-size:11px; color:var(--muted); }
 .queue-content .queue-error { color:var(--danger, #b44337); }
 
-/* Quiet activity rows: summary first, full output only on expansion. */
+/* 过程信息先显示摘要，正文在展开时读取。 */
 .process-details{border-color:transparent;background:color-mix(in srgb,var(--muted) 4%,transparent);border-radius:12px}
 .process-details[open]{border-color:var(--line);box-shadow:none}
 .process-details summary{gap:8px;padding:8px 12px;min-height:42px}
@@ -501,6 +501,22 @@ pre{white-space:pre;overflow:auto;background:var(--surface);border:1px solid var
 .process-preview{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;color:var(--muted);font-size:12px}
 .process-status{margin-left:auto;background:transparent;padding:0 2px}
 .process-details:has(.process-status:not(.failed)){border-left:2px solid var(--line)}
+.process-group{border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--sidebar) 50%,var(--surface));overflow:hidden}
+.process-group>summary{display:flex;align-items:center;gap:9px;flex-wrap:wrap;list-style:none;cursor:pointer;padding:12px 14px;min-height:48px}
+.process-group>summary::-webkit-details-marker{display:none}
+.process-group>summary::after{content:"⌄";margin-left:auto;color:var(--muted);transform:rotate(-90deg)}
+.process-group[open]>summary::after{transform:none}
+.process-group>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;border-radius:14px}
+.process-group-icon{color:var(--accent);font:18px var(--mono)}
+.process-group-count,.process-group-counts{font-size:12px;color:var(--muted)}
+.process-group-counts{flex:1;min-width:0}
+.process-group-preview{flex-basis:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted);padding-left:27px}
+.process-group-body{padding:4px 10px 10px;border-top:1px solid var(--line)}
+.process-group-body>.message{margin:6px 0;padding:0}
+.process-group-body>.message:not(.activity){padding:8px 12px;border-left:2px solid var(--line);margin-left:12px}
+.process-group[data-status=failed]>summary .process-group-icon{color:var(--danger)}
+.process-meta{color:var(--muted);font:12px var(--mono);overflow-wrap:anywhere}
+@media(max-width:480px){.process-group>summary{padding:10px}.process-group-counts{flex-basis:100%;padding-left:27px}.process-group-body{padding:4px 4px 8px}}
 .turn-running::before{content:"";display:inline-block;width:6px;height:6px;margin-right:9px;border-radius:50%;background:currentColor;animation:working-pulse 1.8s ease-in-out infinite}
 @keyframes working-pulse{50%{opacity:.3}}
 @media(prefers-reduced-motion:reduce){.turn-running::before{animation:none}}

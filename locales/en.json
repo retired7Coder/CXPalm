@@ -878,5 +878,17 @@
   "保存文件": "Save file",
   "正在保存…": "Saving...",
   "文件已保存": "File saved",
-  "保存失败，请检查电脑连接、原文件和保存位置。": "Saving failed. Check the computer connection, original file and destination."
+  "保存失败，请检查电脑连接、原文件和保存位置。": "Saving failed. Check the computer connection, original file and destination.",
+  "执行过程": "Activity",
+  "正在处理": "Working",
+  "执行命令": "Command",
+  "网页搜索": "Web search",
+  "工具调用": "Tool call",
+  "审批检查": "Approval review",
+  "上下文压缩": "Context compaction",
+  "模型切换": "Model change",
+  "进度说明": "Progress",
+  "有操作失败": "Some actions failed",
+  "项": "items",
+  "退出码": "Exit code"
 }
