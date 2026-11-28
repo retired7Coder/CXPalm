@@ -890,5 +890,22 @@
   "进度说明": "Progress",
   "有操作失败": "Some actions failed",
   "项": "items",
-  "退出码": "Exit code"
+  "退出码": "Exit code",
+  "App 扫码添加电脑": "Scan to add a computer",
+  "打开 App 的「扫码添加电脑」，扫描右侧二维码。核对地址后，输入这台电脑的账号和密码。": "In the App, choose Scan to add a computer and scan this code. Check the address, then enter the computer account and password.",
+  "二维码只包含连接地址，不包含账号、密码或登录凭据。电脑需保持网关开启。": "This code contains only the connection address, with no account, password or sign-in credentials. Keep the computer gateway running.",
+  "保存有效的 HTTPS 连接地址后显示二维码。": "Save a valid HTTPS connection address to display its QR code.",
+  "电脑连接地址二维码": "Computer connection address QR code",
+  "扫码添加电脑": "Scan to add a computer",
+  "手动输入地址登录": "Enter address manually",
+  "扫码获取电脑地址": "Scan computer address",
+  "扫描电脑 CXPalm「连接与登录」中的二维码": "Scan the code in Connection and sign-in on the computer CXPalm",
+  "二维码不是有效的 CXPalm 电脑地址，请扫描电脑「连接与登录」中的二维码。": "This code is not a valid CXPalm computer address. Scan the code in Connection and sign-in on the computer.",
+  "相机暂不可用，可以手动输入电脑地址。": "Camera unavailable. You can enter the computer address manually.",
+  "未获得相机权限，可以手动输入地址，或在系统设置中允许相机。": "Camera permission was not granted. Enter the address manually or allow camera access in system settings.",
+  "这台设备没有可用相机，请手动输入电脑地址。": "This device has no available camera. Enter the computer address manually.",
+  "确认电脑地址": "Confirm computer address",
+  "请确认与电脑显示的地址一致。确认后只填写地址，再输入这台电脑的账号和密码。": "Check that this matches the address shown on your computer. Confirmation only fills the address; enter the computer account and password next.",
+  "使用此地址": "Use this address",
+  "添加电脑 / 账号登录": "Add computer / Sign in"
 }

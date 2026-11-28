@@ -4,6 +4,27 @@ Public verification records exclude real conversation content, device identifier
 private deployment paths, credentials and raw logs. Tests use synthetic data unless
 explicitly described as deployment connectivity or public-byte checks.
 
+## 0.0.14 / build16
+
+- The desktop connection page generates a QR image locally containing only the
+  public HTTPS connection address. Android scans QR codes locally, confirms the
+  address, then uses the existing account/password login. Scanning does not
+  grant authorization, send messages, open URLs or save camera images.
+- Invalid schemes, credentials, query strings, fragments, arbitrary paths,
+  control characters and invalid ports are rejected. Camera permission is
+  requested on use; devices without a camera can still enter an address.
+  The scanner activity is not exported and camera hardware is optional.
+- Full Go tests and vet, Windows amd64 and macOS amd64/arm64 cross-builds,
+  105 Node checks, isolated Electron UI and Chromium regression checks pass.
+  Android decodes the exact desktop-generated PNG used by the Go fixture.
+- Android reports 97 passing unit tests and one publication-only check pending
+  release. APK build and lint pass with zero errors and eleven warnings.
+  Package identity and signer remain unchanged; test and render-probe code
+  are excluded from the APK.
+- Physical camera scanning, Android-device acceptance and macOS runtime
+  acceptance have not been performed. Official-desktop version and update
+  settings are preserved by deployment checks.
+
 ## 0.0.13 / build15
 
 - Web and Android group progress messages, public reasoning summaries and tool

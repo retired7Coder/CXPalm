@@ -30,14 +30,19 @@ type Response struct {
 	Error string `json:"error,omitempty"`
 }
 type Host struct {
-	config      config.Config
-	db          *store.Store
-	runtime     *agent.Runtime
-	desktopOK   *bool
-	diagnosedAt int64
+	config           config.Config
+	db               *store.Store
+	runtime          *agent.Runtime
+	desktopOK        *bool
+	diagnosedAt      int64
+	connectionURL    string
+	connectionQRCode string
 }
 
-func New(c config.Config, db *store.Store) *Host { return &Host{config: c, db: db} }
+func New(c config.Config, db *store.Store) *Host {
+	address, image := connectionQR(c.Origin)
+	return &Host{config: c, db: db, connectionURL: address, connectionQRCode: image}
+}
 func (h *Host) Close() {
 	if h.runtime != nil {
 		h.runtime.Stop()
@@ -107,7 +112,7 @@ func (h *Host) status(ctx context.Context) (any, error) {
 			active++
 		}
 	}
-	return map[string]any{"version": config.Version, "state": state, "owned": state == "running", "origin": h.config.Origin, "listen": h.config.Listen, "codexHome": h.config.CodexHome, "sshConfigured": h.config.SSHHost != "", "desktopConnected": h.desktopOK, "diagnosedAt": h.diagnosedAt, "sessions": counts, "devices": active, "trustedProxyIP": h.config.TrustedProxyIP}, nil
+	return map[string]any{"version": config.Version, "state": state, "owned": state == "running", "origin": h.config.Origin, "connectionURL": h.connectionURL, "connectionQRCode": h.connectionQRCode, "listen": h.config.Listen, "codexHome": h.config.CodexHome, "sshConfigured": h.config.SSHHost != "", "desktopConnected": h.desktopOK, "diagnosedAt": h.diagnosedAt, "sessions": counts, "devices": active, "trustedProxyIP": h.config.TrustedProxyIP}, nil
 }
 func (h *Host) Execute(ctx context.Context, q Request) (any, error) {
 	if q.Login != nil && q.Method != "login.set" {

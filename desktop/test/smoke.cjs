@@ -31,7 +31,11 @@ async function capture(win,name){await new Promise(resolve=>setTimeout(resolve,2
  assert.equal(await evaluate(win,"typeof require"),'undefined');assert.equal(await evaluate(win,"typeof process"),'undefined');
  assert.equal(await evaluate(win,"document.getElementById('fixture-label').hidden"),false);
  await click(win,'start');await wait(win,"document.getElementById('global-status').textContent.includes('运行中')");await capture(win,'overview');
- await click(win,'go-connect');assert.equal(await evaluate(win,"document.querySelector('#create-pair,#legacy-desktop-pair')===null"),true);await capture(win,'account-connect');
+ await click(win,'go-connect');assert.equal(await evaluate(win,"document.querySelector('#create-pair,#legacy-desktop-pair')===null"),true);
+ await wait(win,"!document.getElementById('computer-qr').hidden&&document.getElementById('computer-qr').naturalWidth>0");
+ assert.equal(await evaluate(win,"document.getElementById('computer-qr-address').textContent"),'https://cxpalm.example.test/cxpalm/');
+ assert.equal(await evaluate(win,"document.getElementById('computer-qr').src.startsWith('data:image/png;base64,')"),true);
+ await capture(win,'account-connect');
  await evaluate(win,"document.querySelector('[data-page=devices]').click()");await wait(win,"document.querySelectorAll('.device-row').length===2");
  assert.equal(await evaluate(win,"document.querySelectorAll('.device-row img').length"),0);
  assert.ok((await evaluate(win,"document.getElementById('devices-list').textContent")).includes('<img'));

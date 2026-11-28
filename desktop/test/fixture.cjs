@@ -3,7 +3,8 @@ exports.create=()=>{
  const client=new EventEmitter();let running=false,policy={enabled:false,entries:[]},diagnosedAt=0,desktopConnected=null;let logs=[];
  let login={configured:false,username:'',revision:''};
  let devices=[{id:'a'.repeat(32),name:'Pixel 9 · 我的手机',created:1792100000,expires:1892100000,revoked:false},{id:'b'.repeat(32),name:'浏览器 <img src=x onerror=alert(1)>',created:1792000000,expires:1892000000,revoked:false}];
- const status=()=>({version:'0.1.0',state:running?'running':'stopped',owned:running,origin:'https://cxpalm.example.test',listen:'127.0.0.1:18789',codexHome:'C:\\Users\\preview\\.codex',sshConfigured:true,trustedProxyIP:true,desktopConnected,diagnosedAt,sessions:{active:13,archived:8},devices:devices.filter(d=>!d.revoked).length});
+ const connectionQRCode='data:image/png;base64,'+require('node:fs').readFileSync(require('node:path').join(__dirname,'../../internal/control/testdata/computer-qr.png')).toString('base64');
+ const status=()=>({version:'0.1.0',state:running?'running':'stopped',owned:running,origin:'https://cxpalm.example.test',connectionURL:'https://cxpalm.example.test/cxpalm/',connectionQRCode,listen:'127.0.0.1:18789',codexHome:'C:\\Users\\preview\\.codex',sshConfigured:true,trustedProxyIP:true,desktopConnected,diagnosedAt,sessions:{active:13,archived:8},devices:devices.filter(d=>!d.revoked).length});
  client.request=async(method,args={})=>{
   if(method==='login.get')return login;
   if(method==='login.set'){login={configured:true,username:args.login.username,revision:'c'.repeat(64)};return login;}

@@ -32,7 +32,8 @@ import io.github.u702165405.cxpalm.R
     var quickComputers by remember { mutableStateOf(false) }
     var page by rememberSaveable { mutableStateOf("sessions") }
     val savedScreens = rememberSaveableStateHolder()
-    var loginOpen by remember { mutableStateOf(false) }
+    var loginOpen by rememberSaveable { mutableStateOf(false) }
+    var scanLogin by rememberSaveable { mutableStateOf(false) }
     var notices by remember { mutableStateOf(false) }
     var updatePrompt by remember { mutableStateOf(false) }
     var promptedVersion by rememberSaveable { mutableIntStateOf(0) }
@@ -95,10 +96,10 @@ import io.github.u702165405.cxpalm.R
             }
             Box(Modifier.weight(1f)) {
                 when (page) {
-                    "sessions" -> if (state.current == null) WelcomePage({ loginOpen = true }, client.loginBusy)
+                    "sessions" -> if (state.current == null) WelcomePage({ scanLogin=false;loginOpen=true }, {scanLogin=true;loginOpen=true}, client.loginBusy)
                         else if (state.thread == null) savedScreens.SaveableStateProvider("sessions:${state.current.id}") { SessionsPage(state, client) }
                         else savedScreens.SaveableStateProvider("chat:${state.current.id}:${state.thread}") { ChatPage(state, client) }
-                    "computers" -> ComputersPage(state, client, { loginOpen = true }) { computer ->
+                    "computers" -> ComputersPage(state, client, { scanLogin=false;loginOpen=true }, {scanLogin=true;loginOpen=true}) { computer ->
                         if (state.current?.id != computer.id || !state.connected) client.connect(computer)
                         page = "sessions"
                     }
@@ -130,10 +131,10 @@ import io.github.u702165405.cxpalm.R
         }
     }, confirmButton = { TextButton(onClick = { updatePrompt = false; page = "settings"; updates.download() }) { Text(tr("下载更新")) } },
         dismissButton = { TextButton(onClick = { updatePrompt = false }) { Text(tr("稍后")) } })
-    if(loginOpen) LoginDialog(client,state.current?.origin.orEmpty()) { loginOpen=false }
+    if(loginOpen) LoginDialog(client,state.current?.origin.orEmpty(),scanLogin) { loginOpen=false;scanLogin=false }
 }
 
-@Composable private fun WelcomePage(login: () -> Unit, busy: Boolean) {
+@Composable private fun WelcomePage(login: () -> Unit, scan: () -> Unit, busy: Boolean) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Spacer(Modifier.height(12.dp))
         Box(Modifier.fillMaxWidth().height(180.dp).background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)), MaterialTheme.shapes.extraLarge), contentAlignment = Alignment.Center) {
@@ -144,6 +145,7 @@ import io.github.u702165405.cxpalm.R
         Text(tr("桌面还在。\n灵感随行。"), style = MaterialTheme.typography.headlineLarge)
         Text(tr("连接电脑上的官方 Codex，继续同一个会话。你的主会话始终由原桌面执行。"), style = MaterialTheme.typography.bodyLarge)
         Button(onClick = login, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (busy) tr("正在登录…") else tr("账号登录")) }
+        OutlinedButton(onClick=scan,enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) {Text(tr("扫码添加电脑"))}
         Text(tr("电脑需保持 Codex 与 CXPalm 网关开启。在电脑设置登录账号，网页与 App 可记住登录 30 天。"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

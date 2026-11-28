@@ -7,6 +7,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/evanphx/json-patch/v5 v5.9.11
 	modernc.org/sqlite v1.38.2
+	rsc.io/qr v0.2.0
 )
 
 require (

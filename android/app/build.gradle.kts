@@ -10,8 +10,8 @@ android {
         applicationId = "io.github.u702165405.cxpalm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.0.13"
+        versionCode = 16
+        versionName = "0.0.14"
     }
     sourceSets.getByName("main").assets.srcDir(rootProject.file("../locales"))
     if (providers.gradleProperty("renderProbe").orNull == "true") {
@@ -36,6 +36,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("org.commonmark:commonmark:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")

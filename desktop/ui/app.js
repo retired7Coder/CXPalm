@@ -48,6 +48,11 @@ function render(){
  for(const [id,value] of [['active-count',state.sessions?.active],['archive-count',state.sessions?.archived],['device-count',state.devices],['nav-devices',state.devices]])$(id).textContent=state.sessions?.error&&id.includes('count')&&id!=='device-count'?'—':value??'—';
  $('version').textContent='v'+(update.currentVersion||'0.0.1');$('fixture-label').hidden=!state.fixture;
  $('address').textContent=configured?state.origin+'/cxpalm/':tr('保存连接设置后显示');
+ const qr=typeof state.connectionQRCode==='string'&&state.connectionQRCode.startsWith('data:image/png;base64,')?state.connectionQRCode:'';
+ $('computer-qr').hidden=!qr;$('computer-qr-missing').hidden=!!qr;
+ if(qr&&$('computer-qr').getAttribute('src')!==qr)$('computer-qr').src=qr;
+ if(!qr)$('computer-qr').removeAttribute('src');
+ $('computer-qr-address').textContent=qr?state.connectionURL||'':'';
  $('config-path').textContent=state.configPath||tr('尚未选择');$('codex-home').textContent=state.codexHome||'—';$('listen').textContent=state.listen||'—';$('tunnel').textContent=configured?(state.sshConfigured?tr('已配置 SSH 反向隧道（不代表已连通）'):tr('未配置 SSH 反向隧道')):'—';
  for(const id of ['copy-address','open-web','reload-devices','diagnose'])$(id).disabled=busy||!configured;
  $('refresh').disabled=busy;$('refresh').setAttribute('aria-busy',String(busy));$('refresh-label').textContent=busy?(currentPage==='diagnostics'?tr('检测中'):tr('刷新中')):(currentPage==='diagnostics'?tr('重新检测'):tr('刷新状态'));$('refresh').setAttribute('aria-label',currentPage==='diagnostics'?tr('重新检测连接'):tr('刷新状态'));

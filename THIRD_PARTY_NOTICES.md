@@ -21,6 +21,11 @@ This is an inventory, not a claim that every transitive license was audited.
 - Go direct and transitive modules: `go.mod` / `go.sum`.
 - Electron, electron-builder and their dependencies: `desktop/package-lock.json`.
 - AndroidX, Kotlin, OkHttp and CommonMark dependencies: Android Gradle files.
+- QR encoding: `rsc.io/qr v0.2.0`, under its BSD 3-Clause license.
+  The pinned module contains the Go Authors copyright and license text.
+- Android QR scanning: JourneyApps ZXing Android Embedded 4.3.0 and
+  ZXing Core 3.5.4, under Apache License 2.0. Exact versions are declared
+  in `android/app/build.gradle.kts`; scanning does not require Google Play Services.
 
 Dependency source, SDKs, caches and `node_modules` are not committed. Obtain
 licenses from the exact pinned dependency distributions, including transitive

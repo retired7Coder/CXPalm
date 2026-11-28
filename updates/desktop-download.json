@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "releaseLine": "fresh-001",
-  "build": 15,
+  "build": 16,
   "appId": "dev.cxpalm.desktop",
   "platform": "win32",
   "arch": "x64",
-  "version": "0.0.13",
-  "url": "https://github.com/702165405/CXPalm/releases/download/v0.0.13-build15/CXPalm-Setup-0.0.13-build15-x64.exe",
-  "size": 120778902,
-  "sha256": "a95ecc366ba5aecbfd3d6762781197c872cf1ff4359fbdf8bd701a6eda176a2c",
-  "notes": "CXPalm 0.0.13 / build15\r\n\r\n网页与 Android 将每轮进度说明、公开思考摘要和工具操作合并为可折叠的执行过程，最终回答独立展示。补齐文件变更、网页搜索与工具文本结果；展开后可查看完整命令、输出、工作目录、退出码和执行耗时。保留流式更新时的展开状态和历史定位，正文按需读取。\r\n\r\n继续使用已验证兼容的官方桌面 26.1111.2228.0。本次不升级官方桌面或更改其自动更新设置。"
+  "version": "0.0.14",
+  "url": "https://github.com/702165405/CXPalm/releases/download/v0.0.14-build16/CXPalm-Setup-0.0.14-build16-x64.exe",
+  "size": 120819259,
+  "sha256": "80fe981880eefc7f32b3217ddd57fc4bd452488de4ca29a985619eb140893a6d",
+  "notes": "CXPalm 0.0.14 / build16\r\n\r\nAndroid 新增「扫码添加电脑」：电脑 CXPalm「连接与登录」显示连接二维码，App 扫描并核对地址后，继续使用账号密码登录。扫码只填写地址，不自动授权或发送消息；二维码只包含 HTTPS 连接地址，不包含密码或设备令牌。未授权相机、取消扫码或没有相机时，仍可手动输入地址。\r\n\r\n继续使用已验证兼容的官方桌面 26.1111.2228.0。本次不升级官方桌面或更改其自动更新设置。"
 }

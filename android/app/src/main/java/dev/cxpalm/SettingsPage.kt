@@ -171,7 +171,7 @@ import kotlinx.coroutines.Dispatchers
 }
 
 
-@Composable fun ComputersPage(state: ViewState, client: BridgeClient, login: () -> Unit, select: (Computer) -> Unit) {
+@Composable fun ComputersPage(state: ViewState, client: BridgeClient, login: () -> Unit, scan: () -> Unit, select: (Computer) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { Text(tr("选择本次对话使用的电脑。其他已登录电脑的提醒监听不受切换影响。"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         state.computers.forEach { computer -> item(key = computer.id) {
@@ -200,9 +200,8 @@ import kotlinx.coroutines.Dispatchers
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(tr("添加电脑"), style = MaterialTheme.typography.titleSmall)
                     Text(tr("在电脑设置登录账号，再输入 HTTPS 地址、账号和密码。"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = login, enabled = !client.loginBusy) { Text(tr("账号登录")) }
-                    }
+                    FilledTonalButton(onClick=scan,enabled=!client.loginBusy,modifier=Modifier.fillMaxWidth()) {Text(tr("扫码添加电脑"))}
+                    TextButton(onClick=login,enabled=!client.loginBusy) {Text(tr("手动输入地址登录"))}
                 }
             }
         }
